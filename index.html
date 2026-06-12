@@ -527,6 +527,11 @@ function newGame() {
   render();
 }
 
+function toggleHelp() {
+  S.helpOpen = !S.helpOpen;
+  render();
+}
+
 /* ============================================================
    Setup-Interaktionen
    ============================================================ */
@@ -585,10 +590,15 @@ function header(sub) {
         </h1>
         <p class="text-[11px] uppercase tracking-widest text-stone-500 mt-1">${sub}</p>
       </div>
-      ${S.phase !== "setup" ? `
+      <div class="flex gap-2 shrink-0">
+        <button onclick="toggleHelp()" class="tap text-[11px] uppercase tracking-wider text-stone-500 border border-stone-800 rounded-lg px-3 py-2 hover:text-neon hover:border-neon">
+          ? Anleitung
+        </button>
+        ${S.phase !== "setup" ? `
         <button onclick="resetAll()" class="tap text-[11px] uppercase tracking-wider text-stone-500 border border-stone-800 rounded-lg px-3 py-2 hover:text-warn hover:border-warn">
           Reset
         </button>` : ""}
+      </div>
     </header>`;
 }
 
@@ -609,6 +619,53 @@ function blackCardEl(idx) {
       <div class="text-[10px] uppercase tracking-widest text-neon mb-3 pulse-warn">⚠ Schwarze Karte · Runde ${S.roundNum}</div>
       <p class="text-lg font-extrabold leading-snug">${blackText(idx)}</p>
     </div>`;
+}
+
+function helpOverlay() {
+  return `
+  <div class="fixed inset-0 z-50 bg-black/85 overflow-y-auto scroll-thin" onclick="if (event.target === this) toggleHelp()">
+    <div class="max-w-xl mx-auto px-4 py-8">
+      <div class="bg-panel border border-stone-800 rounded-2xl p-5 card-shadow slide-up">
+        <div class="flex items-start justify-between gap-3 mb-5">
+          <h2 class="font-display text-xl leading-tight">SO WIRST DU<br><span class="text-neon">GETRIGGERT!</span></h2>
+          <button onclick="toggleHelp()" class="tap shrink-0 w-9 h-9 grid place-items-center rounded-lg border border-stone-700 text-stone-400 hover:text-warn hover:border-warn">✕</button>
+        </div>
+
+        <div class="mb-5">
+          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🎯 Das Ziel</h3>
+          <p class="text-sm text-stone-300 leading-relaxed">
+            Wirf auf jede schwarze Fragekarte die fieseste weiße Antwort aus deiner Hand. Überzeugt sie den Empörungsbeauftragten, kassierst du den Punkt – und wer zuerst das Punkteziel erreicht, hat offiziell <b class="text-stone-100">am meisten getriggert</b> und gewinnt. Mehr gibt es nicht. Außer der Wahrheit über deine Freunde.
+          </p>
+        </div>
+
+        <div class="mb-5">
+          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🃏 Der Ablauf</h3>
+          <ol class="text-sm text-stone-300 leading-relaxed space-y-2 list-none">
+            <li><b class="text-stone-100">1.</b> Pro Runde ist einer der <b class="text-neon">Empörungsbeauftragte</b> 👑. Er zieht die schwarze Karte, lehnt sich zurück und urteilt am Ende. Mehr Macht hatte er nie.</li>
+            <li><b class="text-stone-100">2.</b> Alle anderen wählen <b class="text-stone-100">verdeckt</b> ihre Antwortkarte. Dafür wandert das Gerät reihum. Nicht spicken – sonst gibt's eine Anzeige.</li>
+            <li><b class="text-stone-100">3.</b> Bots reichen automatisch ein. Sofort, zufällig, ohne Gewissen. Wie der Algorithmus eben.</li>
+            <li><b class="text-stone-100">4.</b> Der Beauftragte sieht alle Antworten <b class="text-stone-100">anonym</b> und kürt die beste. Der Gewinner kassiert den Punkt.</li>
+            <li><b class="text-stone-100">5.</b> Danach wird aufgedeckt, wer was gespielt hat. Viel Spaß beim nächsten Familienfest.</li>
+            <li><b class="text-stone-100">6.</b> Karten nachziehen, Krone rotiert, nächste Runde. Bis einer heult oder gewinnt.</li>
+          </ol>
+        </div>
+
+        <div class="mb-6">
+          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🆘 Die Notfall-Mechaniken</h3>
+          <p class="text-sm text-stone-300 leading-relaxed mb-2">
+            <b class="text-stone-100">🔄 Neue Hand:</b> Deine Karten sind so schlecht, dass nicht mal die Lücke sie will? ${REDRAWS_PER_GAME}× pro Spiel darfst du die komplette Hand tauschen. Danach: mit den Entscheidungen leben. Wie im echten Leben.
+          </p>
+          <p class="text-sm text-stone-300 leading-relaxed">
+            <b class="text-stone-100">⏭ Karte skippen:</b> Die schwarze Karte zündet nicht? Überspringen geht jederzeit – bereits gespielte Antworten kommen zurück auf die Hand. Niemand verliert etwas. Außer Zeit.
+          </p>
+        </div>
+
+        <button onclick="toggleHelp()" class="tap w-full py-3.5 rounded-xl font-display text-base bg-neon text-white card-shadow">
+          KAPIERT. EMPÖRT MICH! ▶
+        </button>
+      </div>
+    </div>
+  </div>`;
 }
 
 function skipBtn(label) {
@@ -840,7 +897,7 @@ function render() {
       S = defaultState();
       html = renderSetup();
   }
-  app.innerHTML = html;
+  app.innerHTML = html + (S.helpOpen ? helpOverlay() : "");
   window.scrollTo(0, 0);
 }
 
@@ -855,6 +912,7 @@ if (S.phase === "answer") S.phase = "pass_answer";
 if (S.phase === "judge") S.phase = "pass_judge";
 S.selectedCard = null;
 S.judgeSelected = null;
+S.helpOpen = false;
 render();
 </script>
 </body>
