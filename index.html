@@ -214,7 +214,11 @@ const WHITE_CARDS = [
 const BOT_NAMES = ["Bot-Karen", "Algorithmus-Achim", "KI-Kevin", "Cyber-Chantal", "Server-Siggi", "Roboter-Renate", "Maschinen-Mandy"];
 
 const HAND_SIZE = 8;
+const REDRAWS_PER_GAME = 2;
 const STORAGE_KEY = "getriggert_state_v1";
+// Signatur der Kartendecks: ändert sich der Kartenbestand im Code, passen
+// gespeicherte Karten-Indizes nicht mehr – alte Spielstände werden dann verworfen.
+const DECK_SIG = BLACK_CARDS.length + ":" + WHITE_CARDS.length;
 
 /* ============================================================
    State
@@ -225,6 +229,7 @@ let S = null;
 function defaultState() {
   return {
     phase: "setup",
+    deckSig: DECK_SIG,
     targetScore: 5,
     setupPlayers: [
       { name: "", isBot: false },
@@ -258,6 +263,15 @@ function load() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.phase !== "string") return null;
+    // Kartendecks im Code geändert? Dann zeigen gespeicherte Indizes auf
+    // falsche Texte – laufendes Spiel verwerfen, Setup-Daten retten.
+    if (parsed.phase !== "setup" && parsed.deckSig !== DECK_SIG) {
+      const fresh = defaultState();
+      if (Array.isArray(parsed.setupPlayers) && parsed.setupPlayers.length >= 3) fresh.setupPlayers = parsed.setupPlayers;
+      if (typeof parsed.targetScore === "number") fresh.targetScore = parsed.targetScore;
+      return fresh;
+    }
+    parsed.deckSig = DECK_SIG;
     return parsed;
   } catch (e) { return null; }
 }
@@ -323,7 +337,7 @@ function startGame() {
       name = p.isBot ? BOT_NAMES[botCount % BOT_NAMES.length] : "Spieler " + (humanCount + 1);
     }
     if (p.isBot) botCount++; else humanCount++;
-    return { name, isBot: p.isBot, score: 0, hand: [] };
+    return { name, isBot: p.isBot, score: 0, hand: [], redraws: REDRAWS_PER_GAME };
   });
 
   S.players = players;
@@ -338,6 +352,16 @@ function startGame() {
   startRound();
 }
 
+// Bots spielen sofort verdeckt eine zufällige Karte
+function botsSubmit() {
+  S.players.forEach((p, idx) => {
+    if (idx === S.czarIdx || !p.isBot) return;
+    const cardPos = Math.floor(Math.random() * p.hand.length);
+    const cardIdx = p.hand.splice(cardPos, 1)[0];
+    S.submissions.push({ playerIdx: idx, cardIdx });
+  });
+}
+
 function startRound() {
   S.roundNum++;
   S.currentBlack = drawBlack();
@@ -345,13 +369,7 @@ function startRound() {
   S.selectedCard = null;
   S.judgeSelected = null;
 
-  // Bots spielen sofort verdeckt eine zufällige Karte
-  S.players.forEach((p, idx) => {
-    if (idx === S.czarIdx || !p.isBot) return;
-    const cardPos = Math.floor(Math.random() * p.hand.length);
-    const cardIdx = p.hand.splice(cardPos, 1)[0];
-    S.submissions.push({ playerIdx: idx, cardIdx });
-  });
+  botsSubmit();
 
   // Menschen kommen nacheinander dran (Hot-Seat)
   S.answerQueue = S.players
@@ -390,6 +408,41 @@ function submitCard() {
   S.selectedCard = null;
   S.queuePos++;
   if (S.queuePos >= S.answerQueue.length) {
+    goJudge();
+  } else {
+    S.phase = "pass_answer";
+  }
+  save();
+  render();
+}
+
+function redrawHand() {
+  const playerIdx = S.answerQueue[S.queuePos];
+  const player = S.players[playerIdx];
+  if (!player || player.redraws <= 0) return;
+  if (!confirm("Komplette Hand abwerfen und " + HAND_SIZE + " neue Karten ziehen? (Noch " + player.redraws + "× möglich)")) return;
+  player.redraws--;
+  S.whiteDiscard.push(...player.hand);
+  player.hand = [];
+  refillHand(player);
+  S.selectedCard = null;
+  save();
+  render();
+}
+
+function skipBlack() {
+  if (!confirm("Schwarze Karte skippen? Sie wird ersetzt, bereits gespielte Antworten gehen zurück auf die Hand.")) return;
+  S.submissions.forEach(s => S.players[s.playerIdx].hand.push(s.cardIdx));
+  S.submissions = [];
+  S.blackDiscard.push(S.currentBlack);
+  S.currentBlack = drawBlack();
+  S.selectedCard = null;
+  S.judgeSelected = null;
+
+  botsSubmit();
+  S.queuePos = 0;
+  if (S.answerQueue.length === 0) {
+    // Alle Mitspieler sind Bots – direkt zurück zum (menschlichen) Urteil
     goJudge();
   } else {
     S.phase = "pass_answer";
@@ -558,6 +611,14 @@ function blackCardEl(idx) {
     </div>`;
 }
 
+function skipBtn(label) {
+  return `
+    <button onclick="skipBlack()"
+      class="tap w-full mt-2 text-[11px] uppercase tracking-wider text-stone-500 border border-dashed border-stone-800 rounded-lg px-3 py-2 hover:text-warn hover:border-warn">
+      ⏭ ${label}
+    </button>`;
+}
+
 function renderSetup() {
   const humans = S.setupPlayers.filter(p => !p.isBot).length;
   return `
@@ -623,6 +684,7 @@ function renderPassAnswer() {
     ${header("Gerät weitergeben")}
     ${scoreboard()}
     ${blackCardEl(S.currentBlack)}
+    ${skipBtn("Niemand hat was Passendes? Schwarze Karte skippen")}
     <div class="flex-1 grid place-items-center py-10">
       <div class="text-center slide-up">
         <div class="text-5xl mb-4">🤫</div>
@@ -643,7 +705,14 @@ function renderAnswer() {
     ${header("Wähle deine fieseste Karte")}
     ${scoreboard()}
     ${blackCardEl(S.currentBlack)}
-    <p class="text-xs text-stone-500 mt-4 mb-2 uppercase tracking-wider">Deine Hand, ${esc(player.name)}:</p>
+    ${skipBtn("Niemand hat was Passendes? Schwarze Karte skippen")}
+    <div class="flex items-center justify-between gap-2 mt-4 mb-2">
+      <p class="text-xs text-stone-500 uppercase tracking-wider">Deine Hand, ${esc(player.name)}:</p>
+      <button onclick="redrawHand()" ${player.redraws > 0 ? "" : "disabled"}
+        class="tap shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-lg border ${player.redraws > 0 ? "border-neon text-neon bg-neon/10" : "border-stone-800 text-stone-600"}">
+        🔄 Neue Hand (${player.redraws}×)
+      </button>
+    </div>
     <div class="grid grid-cols-2 gap-2.5 mb-4">
       ${player.hand.map((cardIdx, pos) => `
         <button onclick="selectCard(${pos})"
@@ -680,6 +749,7 @@ function renderJudge() {
     ${header("Wähle den Gewinner")}
     ${scoreboard()}
     ${blackCardEl(S.currentBlack)}
+    ${skipBtn("Alles Müll? Schwarze Karte skippen – Antworten gehen zurück")}
     <p class="text-xs text-stone-500 mt-4 mb-2 uppercase tracking-wider">Anonyme Einsendungen – wähle die beste:</p>
     <div class="space-y-2.5 mb-4">
       ${S.submissions.map((s, pos) => `
