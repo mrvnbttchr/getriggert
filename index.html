@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>GETRIGGERT! – Ein Spiel, zwei Runden, drei Anzeigen.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: "#0a0a0b",
+          panel: "#141417",
+          card: "#f5f5f4",
+          neon: "#ff2d78",
+          warn: "#ff3b30",
+        },
+        fontFamily: {
+          display: ["Archivo Black", "Arial Black", "sans-serif"],
+          body: ["Inter", "system-ui", "sans-serif"],
+        },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  body { background: #0a0a0b; }
+  .card-shadow { box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+  .neon-glow { box-shadow: 0 0 0 2px #ff2d78, 0 0 24px rgba(255,45,120,.55); }
+  .tap { transition: transform .12s ease, box-shadow .12s ease; }
+  .tap:active { transform: scale(.97); }
+  ::selection { background:#ff2d78; color:#fff; }
+  .scroll-thin::-webkit-scrollbar { width: 6px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background:#333; border-radius:3px; }
+  @keyframes pulseWarn { 0%,100%{opacity:1} 50%{opacity:.55} }
+  .pulse-warn { animation: pulseWarn 1.6s infinite; }
+  @keyframes slideUp { from { transform: translateY(16px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+  .slide-up { animation: slideUp .25s ease both; }
+</style>
+</head>
+<body class="font-body text-stone-100 min-h-screen">
+
+<div id="app" class="max-w-xl mx-auto min-h-screen flex flex-col px-4 pb-8"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   GETRIGGERT! – Kartendatenbank
+   ============================================================ */
+
+const BLACK_CARDS = [
+  "Meine nächste Twitter-Cancelung scheitert vermutlich an ______.",
+  "Was findet man heute in jedem veganen Bio-Supermarkt?",
+  "Der wahre Grund für den jüngsten Shitstorm gegen die Bundesregierung: ______.",
+  "Mein Therapeut sagt, mein größtes Problem ist ______.",
+  "Auf dem nächsten Familienfest eskaliert es garantiert wegen ______.",
+  "Die neue Trend-Diät besteht ausschließlich aus ______.",
+  "Was steht 2026 ganz oben auf der Liste der verbotenen Wörter?",
+  "LinkedIn-Influencer feiern jetzt ______ als absoluten Game Changer.",
+  "Statt einer Midlife-Crisis gönne ich mir dieses Jahr ______.",
+  "Das Startup meines Mitbewohners verkauft ______. Bewertung: 3 Milliarden.",
+  "Im neuen Achtsamkeits-Retreat lernt man vor allem eines: ______.",
+  "Die Netflix-Doku 'Deutschland 2026' beginnt mit einer Szene über ______.",
+  "Mein Dating-Profil sagt 'abenteuerlustig', meint aber ______.",
+  "Was hat den Hausarzt endgültig in den Burnout getrieben?",
+  "Der Elternabend musste abgebrochen werden wegen ______.",
+  "Neueste Studie beweist: ______ macht angeblich glücklich.",
+  "Der eigentliche Auslöser des Nachbarschaftskriegs war ______.",
+  "Auf meinem Vision Board klebt ganz oben ______.",
+  "Sondersendung der Tagesschau: 'Nation gespalten wegen ______.'",
+  "Cancel Culture hat jetzt auch ______ erwischt.",
+  "Mein inneres Kind wünscht sich zu Weihnachten ______.",
+  "Was verbirgt sich wirklich hinter dem Buzzword 'New Work'?",
+  "Beim Schweigeseminar wurde ich rausgeworfen wegen ______.",
+  "Omas Geheimrezept enthält neuerdings ______.",
+  "Der Podcast 'Zwei Männer reden über Gefühle' behandelt diese Woche ______.",
+  "Was wird auf der nächsten Großdemo lautstark gefordert?",
+  "Mein Horoskop warnt mich heute eindringlich vor ______.",
+  "Die WG-Vollversammlung eskalierte komplett beim Thema ______.",
+];
+
+const WHITE_CARDS = [
+  "Ein toxisch-männlicher Nervenzusammenbruch",
+  "Dinge, über die man im Jahr 2026 nicht mehr reden darf",
+  "Ein hysterischer Tweet mit 3 Followern",
+  "Die Gefühle von Boomern verletzen",
+  "Helikopter-Eltern auf Koks",
+  "Glutenfreie Empörung",
+  "Ein Achtsamkeits-Seminar, das in einer Schlägerei endet",
+  "Veganer Aufschnitt, der nach Reue schmeckt",
+  "Ein offener Brief mit 400 Erstunterzeichnern",
+  "Eine Schweigeminute für ein gelöschtes Instagram-Profil",
+  "Lastenrad-Rage auf dem Bioladen-Parkplatz",
+  "Ein Gendersternchen am falschen Ort",
+  "Ein Männerabend, der mit Tränen endet",
+  "Selbstoptimierung bis zum Bandscheibenvorfall",
+  "Ein Shitstorm wegen eines einzigen Emojis",
+  "Mikroaggressionen im Wartezimmer",
+  "Der CO₂-Fußabdruck eines einzigen Wutausbruchs",
+  "Ein Influencer, der 'authentisch' buchstabieren muss",
+  "Detox-Tee mit Abführwirkung und Lebenslüge",
+  "Eine Trigger-Warnung vor der Trigger-Warnung",
+  "Boomer-Witze auf dem Betriebsausflug",
+  "Ein Podcast über Podcasts",
+  "Cancel Culture für Gartenzwerge",
+  "Die Empörungsbeauftragte des Kleingartenvereins",
+  "Ein veganes Grillfest mit Fleischgeruch von nebenan",
+  "Therapie-Sprech beim ersten Date",
+  "Ein NFT vom eigenen Burnout",
+  "Achtsam atmen, während alles brennt",
+  "Der Praktikant, der den Firmen-Account übernommen hat",
+  "Eine Online-Petition gegen Montage",
+  "Spirituelles Bypassing mit Räucherstäbchen",
+  "Ein SUV mit 'Atomkraft? Nein danke'-Aufkleber",
+  "Quinoa, das mehr gereist ist als du",
+  "Die Work-Life-Balance eines Galeerensklaven",
+  "Ein Mansplaining-Marathon mit Medaille",
+  "Hochsensible Hauskatzen mit eigenem Therapeuten",
+  "Ein Hashtag, der alles nur noch schlimmer macht",
+  "Bio-Avocados, eingeflogen per Privatjet",
+  "Der moralische Zeigefinger als Fitnessgerät",
+  "Ein Familien-Gruppenchat kurz vor der Explosion",
+  "Gendergerechte Gartenarbeit",
+  "Ein Lebenslauf voller 'Selbstfindungsphasen'",
+  "Empörung im Abo-Modell",
+  "Ein Kindergeburtstag mit Konsens-Workshop",
+  "Die emotionale Verfügbarkeit eines Backsteins",
+  "Ein Yogalehrer mit Steuerhinterziehung",
+  "Klimaneutrales Fremdschämen",
+  "Ein Tofu-Würstchen in der Sinnkrise",
+  "Polyamorie, aber nur in der Theorie",
+  "Der Algorithmus, der dich besser kennt als deine Mutter",
+  "Ein Sabbatical auf Kosten der Eltern",
+  "Wutbürger mit WLAN-Problemen",
+  "Eine Entschuldigung im Notizen-App-Format",
+  "Der vierte Energydrink vor dem Achtsamkeitskurs",
+  "Ein Hausboot voller Lifecoaches",
+  "Die Komfortzone als Hauptwohnsitz",
+  "Ein Streik der unbezahlten Praktikanten",
+  "Hafermilch-Schaum mit Überlegenheitsgefühl",
+  "Ein Meeting, das eine E-Mail hätte sein können",
+  "Die Selbsthilfegruppe für gelöschte Tweets",
+  "Ein Bart, der mehr Pflege bekommt als die Beziehung",
+  "CrossFit als Persönlichkeitsersatz",
+  "Ein WhatsApp-Sprachmemo von 11 Minuten Länge",
+  "Die Steuererklärung eines spirituellen Lebensberaters",
+  "Greenwashing beim Wäschewaschen",
+  "Ein Hund mit eigenem Instagram-Management",
+  "Ein Wochenende ohne Handy (gelogen)",
+  "Der Schwiegermutter-Blick beim Wort 'Patchwork'",
+  "Ein E-Scooter im Landschaftsschutzgebiet",
+  "Ziviler Ungehorsam, aber erst nach dem Mittagsschlaf",
+  "Ein politisches Manifest in Comic Sans",
+  "Die Ironie-Ebene, auf der niemand mehr durchblickt",
+];
+
+const BOT_NAMES = ["Bot-Karen", "Algorithmus-Achim", "KI-Kevin", "Cyber-Chantal", "Server-Siggi", "Roboter-Renate", "Maschinen-Mandy"];
+
+const HAND_SIZE = 8;
+const STORAGE_KEY = "getriggert_state_v1";
+
+/* ============================================================
+   State
+   ============================================================ */
+
+let S = null;
+
+function defaultState() {
+  return {
+    phase: "setup",
+    targetScore: 5,
+    setupPlayers: [
+      { name: "", isBot: false },
+      { name: "", isBot: true },
+      { name: "", isBot: true },
+    ],
+    players: [],
+    blackDeck: [],
+    blackDiscard: [],
+    whiteDeck: [],
+    whiteDiscard: [],
+    czarIdx: 0,
+    currentBlack: null,
+    submissions: [],
+    answerQueue: [],
+    queuePos: 0,
+    selectedCard: null,
+    judgeSelected: null,
+    lastRound: null,
+    roundNum: 0,
+  };
+}
+
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); } catch (e) { /* Speicher voll/blockiert: Spiel läuft trotzdem weiter */ }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.phase !== "string") return null;
+    return parsed;
+  } catch (e) { return null; }
+}
+
+function resetAll() {
+  if (!confirm("Wirklich alles zurücksetzen? Der Spielstand wird gelöscht.")) return;
+  const keepPlayers = S && S.setupPlayers ? S.setupPlayers : null;
+  S = defaultState();
+  if (keepPlayers) S.setupPlayers = keepPlayers;
+  save();
+  render();
+}
+
+/* ============================================================
+   Deck-Helfer
+   ============================================================ */
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function drawWhite() {
+  if (S.whiteDeck.length === 0) {
+    S.whiteDeck = shuffle(S.whiteDiscard);
+    S.whiteDiscard = [];
+  }
+  return S.whiteDeck.pop();
+}
+
+function drawBlack() {
+  if (S.blackDeck.length === 0) {
+    S.blackDeck = shuffle(S.blackDiscard);
+    S.blackDiscard = [];
+  }
+  return S.blackDeck.pop();
+}
+
+function refillHand(player) {
+  while (player.hand.length < HAND_SIZE && (S.whiteDeck.length > 0 || S.whiteDiscard.length > 0)) {
+    player.hand.push(drawWhite());
+  }
+}
+
+/* ============================================================
+   Spiel-Logik
+   ============================================================ */
+
+function startGame() {
+  const setup = S.setupPlayers;
+  const humans = setup.filter(p => !p.isBot).length;
+  if (setup.length < 3) { alert("Mindestens 3 Spieler!"); return; }
+  if (humans < 1) { alert("Mindestens ein menschlicher Spieler muss dabei sein – sonst empört sich hier ja niemand echt."); return; }
+
+  let botCount = 0, humanCount = 0;
+  const players = setup.map(p => {
+    let name = (p.name || "").trim();
+    if (!name) {
+      name = p.isBot ? BOT_NAMES[botCount % BOT_NAMES.length] : "Spieler " + (humanCount + 1);
+    }
+    if (p.isBot) botCount++; else humanCount++;
+    return { name, isBot: p.isBot, score: 0, hand: [] };
+  });
+
+  S.players = players;
+  S.blackDeck = shuffle(BLACK_CARDS.map((_, i) => i));
+  S.blackDiscard = [];
+  S.whiteDeck = shuffle(WHITE_CARDS.map((_, i) => i));
+  S.whiteDiscard = [];
+  S.czarIdx = Math.floor(Math.random() * players.length);
+  S.roundNum = 0;
+  S.lastRound = null;
+  players.forEach(refillHand);
+  startRound();
+}
+
+function startRound() {
+  S.roundNum++;
+  S.currentBlack = drawBlack();
+  S.submissions = [];
+  S.selectedCard = null;
+  S.judgeSelected = null;
+
+  // Bots spielen sofort verdeckt eine zufällige Karte
+  S.players.forEach((p, idx) => {
+    if (idx === S.czarIdx || !p.isBot) return;
+    const cardPos = Math.floor(Math.random() * p.hand.length);
+    const cardIdx = p.hand.splice(cardPos, 1)[0];
+    S.submissions.push({ playerIdx: idx, cardIdx });
+  });
+
+  // Menschen kommen nacheinander dran (Hot-Seat)
+  S.answerQueue = S.players
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p, idx }) => idx !== S.czarIdx && !p.isBot)
+    .map(({ idx }) => idx);
+  S.queuePos = 0;
+
+  if (S.answerQueue.length === 0) {
+    goJudge();
+  } else {
+    S.phase = "pass_answer";
+  }
+  save();
+  render();
+}
+
+function showHand() {
+  S.phase = "answer";
+  S.selectedCard = null;
+  save();
+  render();
+}
+
+function selectCard(pos) {
+  S.selectedCard = pos;
+  render(); // transient, kein save nötig – schadet aber nicht
+}
+
+function submitCard() {
+  if (S.selectedCard === null) return;
+  const playerIdx = S.answerQueue[S.queuePos];
+  const player = S.players[playerIdx];
+  const cardIdx = player.hand.splice(S.selectedCard, 1)[0];
+  S.submissions.push({ playerIdx, cardIdx });
+  S.selectedCard = null;
+  S.queuePos++;
+  if (S.queuePos >= S.answerQueue.length) {
+    goJudge();
+  } else {
+    S.phase = "pass_answer";
+  }
+  save();
+  render();
+}
+
+function goJudge() {
+  S.submissions = shuffle(S.submissions);
+  const czar = S.players[S.czarIdx];
+  if (czar.isBot) {
+    // Bot-Boss entscheidet gnadenlos zufällig
+    const winnerPos = Math.floor(Math.random() * S.submissions.length);
+    finishRound(winnerPos);
+  } else {
+    S.phase = "pass_judge";
+  }
+}
+
+function showJudging() {
+  S.phase = "judge";
+  S.judgeSelected = null;
+  save();
+  render();
+}
+
+function selectWinner(pos) {
+  S.judgeSelected = pos;
+  render();
+}
+
+function confirmWinner() {
+  if (S.judgeSelected === null) return;
+  finishRound(S.judgeSelected);
+  save();
+  render();
+}
+
+function finishRound(winnerPos) {
+  const winSub = S.submissions[winnerPos];
+  const winner = S.players[winSub.playerIdx];
+  winner.score++;
+
+  S.lastRound = {
+    blackIdx: S.currentBlack,
+    czarName: S.players[S.czarIdx].name,
+    czarIsBot: S.players[S.czarIdx].isBot,
+    winnerName: winner.name,
+    winningCardIdx: winSub.cardIdx,
+    reveals: S.submissions.map(s => ({
+      name: S.players[s.playerIdx].name,
+      cardIdx: s.cardIdx,
+      won: s === winSub,
+    })),
+  };
+
+  // Karten abräumen
+  S.submissions.forEach(s => S.whiteDiscard.push(s.cardIdx));
+  S.blackDiscard.push(S.currentBlack);
+  S.submissions = [];
+  S.currentBlack = null;
+
+  S.phase = winner.score >= S.targetScore ? "gameover" : "result";
+  save();
+  render();
+}
+
+function nextRound() {
+  S.czarIdx = (S.czarIdx + 1) % S.players.length;
+  S.players.forEach(refillHand);
+  startRound();
+}
+
+function newGame() {
+  const keep = S.setupPlayers;
+  const target = S.targetScore;
+  S = defaultState();
+  S.setupPlayers = keep;
+  S.targetScore = target;
+  save();
+  render();
+}
+
+/* ============================================================
+   Setup-Interaktionen
+   ============================================================ */
+
+function setupAddPlayer() {
+  if (S.setupPlayers.length >= 8) return;
+  S.setupPlayers.push({ name: "", isBot: true });
+  save();
+  render();
+}
+
+function setupRemovePlayer(i) {
+  if (S.setupPlayers.length <= 3) return;
+  S.setupPlayers.splice(i, 1);
+  save();
+  render();
+}
+
+function setupToggleBot(i) {
+  S.setupPlayers[i].isBot = !S.setupPlayers[i].isBot;
+  save();
+  render();
+}
+
+function setupName(i, val) {
+  S.setupPlayers[i].name = val;
+  save(); // kein render – Input behält den Fokus
+}
+
+function setupTarget(val) {
+  S.targetScore = parseInt(val, 10) || 5;
+  save();
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+
+function esc(str) {
+  return String(str).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function blackText(idx) {
+  const t = esc(BLACK_CARDS[idx]);
+  return t.replace(/______/g, '<span class="text-neon font-extrabold">______</span>');
+}
+
+function header(sub) {
+  return `
+    <header class="pt-5 pb-4 flex items-start justify-between gap-3">
+      <div>
+        <h1 class="font-display text-2xl leading-none tracking-tight">
+          GETRIGGERT<span class="text-neon">!</span>
+        </h1>
+        <p class="text-[11px] uppercase tracking-widest text-stone-500 mt-1">${sub}</p>
+      </div>
+      ${S.phase !== "setup" ? `
+        <button onclick="resetAll()" class="tap text-[11px] uppercase tracking-wider text-stone-500 border border-stone-800 rounded-lg px-3 py-2 hover:text-warn hover:border-warn">
+          Reset
+        </button>` : ""}
+    </header>`;
+}
+
+function scoreboard() {
+  return `
+    <div class="flex flex-wrap gap-2 mb-4">
+      ${S.players.map((p, i) => `
+        <div class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border ${i === S.czarIdx ? "border-neon text-neon neon-glow bg-neon/10" : "border-stone-800 text-stone-400 bg-panel"}">
+          ${i === S.czarIdx ? "👑 " : ""}${esc(p.name)}${p.isBot ? " 🤖" : ""}
+          <span class="font-extrabold ${i === S.czarIdx ? "text-neon" : "text-stone-200"}">${p.score}</span>
+        </div>`).join("")}
+    </div>`;
+}
+
+function blackCardEl(idx) {
+  return `
+    <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow slide-up">
+      <div class="text-[10px] uppercase tracking-widest text-neon mb-3 pulse-warn">⚠ Schwarze Karte · Runde ${S.roundNum}</div>
+      <p class="text-lg font-extrabold leading-snug">${blackText(idx)}</p>
+    </div>`;
+}
+
+function renderSetup() {
+  const humans = S.setupPlayers.filter(p => !p.isBot).length;
+  return `
+    ${header("Ein Spiel, zwei Runden, drei Anzeigen.")}
+    <div class="bg-warn/10 border border-warn/40 rounded-xl px-4 py-3 mb-5 text-xs text-warn leading-relaxed slide-up">
+      ⚠ <b>TRIGGER-WARNUNG:</b> Dieses Spiel enthält Satire, schwarzen Humor und Meinungen, die garantiert irgendwen empören. Weiterspielen auf eigene Gefahr.
+    </div>
+
+    <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-extrabold uppercase tracking-wider text-stone-300">Spieler (${S.setupPlayers.length}/8)</h2>
+        <button onclick="setupAddPlayer()" ${S.setupPlayers.length >= 8 ? "disabled" : ""}
+          class="tap text-xs font-bold px-3 py-1.5 rounded-lg ${S.setupPlayers.length >= 8 ? "bg-stone-800 text-stone-600" : "bg-neon text-white"}">
+          + Spieler
+        </button>
+      </div>
+      <div class="space-y-2">
+        ${S.setupPlayers.map((p, i) => {
+          const botsBefore = S.setupPlayers.slice(0, i).filter(x => x.isBot).length;
+          const humansBefore = i - botsBefore;
+          const ph = p.isBot ? BOT_NAMES[botsBefore % BOT_NAMES.length] : "Spieler " + (humansBefore + 1);
+          return `
+          <div class="flex items-center gap-2">
+            <input type="text" value="${esc(p.name)}" maxlength="16"
+              placeholder="${ph}"
+              oninput="setupName(${i}, this.value)"
+              class="flex-1 min-w-0 bg-ink border border-stone-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-neon placeholder-stone-600" />
+            <button onclick="setupToggleBot(${i})"
+              class="tap shrink-0 text-xs font-bold px-3 py-2.5 rounded-lg border ${p.isBot ? "border-neon text-neon bg-neon/10" : "border-stone-700 text-stone-400"}">
+              ${p.isBot ? "🤖 Bot" : "🧍 Mensch"}
+            </button>
+            <button onclick="setupRemovePlayer(${i})" ${S.setupPlayers.length <= 3 ? "disabled" : ""}
+              class="tap shrink-0 w-9 h-9 grid place-items-center rounded-lg border border-stone-800 ${S.setupPlayers.length <= 3 ? "text-stone-700" : "text-warn"}">✕</button>
+          </div>`;
+        }).join("")}
+      </div>
+      <p class="text-[11px] text-stone-500 mt-3">Mindestens 1 Mensch. Bots wählen automatisch – perfekt zum Solo-Testen.</p>
+    </div>
+
+    <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-6">
+      <h2 class="text-sm font-extrabold uppercase tracking-wider text-stone-300 mb-3">Punkteziel</h2>
+      <div class="flex gap-2">
+        ${[3, 5, 7, 10].map(n => `
+          <button onclick="setupTarget(${n}); render();"
+            class="tap flex-1 py-2.5 rounded-lg text-sm font-extrabold border ${S.targetScore === n ? "border-neon text-neon bg-neon/10 neon-glow" : "border-stone-700 text-stone-400"}">
+            ${n}
+          </button>`).join("")}
+      </div>
+    </div>
+
+    <button onclick="startGame()"
+      class="tap w-full py-4 rounded-2xl font-display text-lg tracking-wide ${humans >= 1 ? "bg-neon text-white card-shadow" : "bg-stone-800 text-stone-500"}">
+      EMPÖRUNG STARTEN ▶
+    </button>
+    <p class="text-center text-[11px] text-stone-600 mt-4">${BLACK_CARDS.length} schwarze · ${WHITE_CARDS.length} weiße Karten im Deck</p>`;
+}
+
+function renderPassAnswer() {
+  const playerIdx = S.answerQueue[S.queuePos];
+  const player = S.players[playerIdx];
+  const czar = S.players[S.czarIdx];
+  return `
+    ${header("Gerät weitergeben")}
+    ${scoreboard()}
+    ${blackCardEl(S.currentBlack)}
+    <div class="flex-1 grid place-items-center py-10">
+      <div class="text-center slide-up">
+        <div class="text-5xl mb-4">🤫</div>
+        <p class="text-stone-400 text-sm mb-1">Empörungsbeauftragte:r dieser Runde: <span class="text-neon font-bold">${esc(czar.name)}</span></p>
+        <p class="text-xl font-extrabold mb-6">Gib das Gerät an<br><span class="text-neon text-3xl font-display">${esc(player.name)}</span></p>
+        <button onclick="showHand()" class="tap bg-neon text-white font-display px-8 py-4 rounded-2xl text-base card-shadow">
+          ICH BIN ${esc(player.name.toUpperCase())} – KARTEN ZEIGEN
+        </button>
+        <p class="text-[11px] text-stone-600 mt-4">Niemand sonst gucken! Sonst gibt's eine Anzeige.</p>
+      </div>
+    </div>`;
+}
+
+function renderAnswer() {
+  const playerIdx = S.answerQueue[S.queuePos];
+  const player = S.players[playerIdx];
+  return `
+    ${header("Wähle deine fieseste Karte")}
+    ${scoreboard()}
+    ${blackCardEl(S.currentBlack)}
+    <p class="text-xs text-stone-500 mt-4 mb-2 uppercase tracking-wider">Deine Hand, ${esc(player.name)}:</p>
+    <div class="grid grid-cols-2 gap-2.5 mb-4">
+      ${player.hand.map((cardIdx, pos) => `
+        <button onclick="selectCard(${pos})"
+          class="tap text-left bg-card text-stone-900 rounded-xl p-3 text-[13px] font-semibold leading-snug min-h-[88px] ${S.selectedCard === pos ? "neon-glow" : "border border-stone-300/20"}">
+          ${esc(WHITE_CARDS[cardIdx])}
+        </button>`).join("")}
+    </div>
+    <button onclick="submitCard()" ${S.selectedCard === null ? "disabled" : ""}
+      class="tap w-full py-4 rounded-2xl font-display text-base ${S.selectedCard === null ? "bg-stone-800 text-stone-600" : "bg-neon text-white card-shadow"}">
+      ${S.selectedCard === null ? "KARTE ANTIPPEN…" : "VERDECKT EINREICHEN ✓"}
+    </button>`;
+}
+
+function renderPassJudge() {
+  const czar = S.players[S.czarIdx];
+  return `
+    ${header("Alle Antworten sind drin")}
+    ${scoreboard()}
+    ${blackCardEl(S.currentBlack)}
+    <div class="flex-1 grid place-items-center py-10">
+      <div class="text-center slide-up">
+        <div class="text-5xl mb-4">⚖️</div>
+        <p class="text-xl font-extrabold mb-6">Gib das Gerät an<br><span class="text-neon text-3xl font-display">${esc(czar.name)}</span></p>
+        <p class="text-stone-400 text-sm mb-6">Zeit für das Urteil der/des Empörungsbeauftragten.</p>
+        <button onclick="showJudging()" class="tap bg-neon text-white font-display px-8 py-4 rounded-2xl text-base card-shadow">
+          URTEIL FÄLLEN ⚖
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderJudge() {
+  return `
+    ${header("Wähle den Gewinner")}
+    ${scoreboard()}
+    ${blackCardEl(S.currentBlack)}
+    <p class="text-xs text-stone-500 mt-4 mb-2 uppercase tracking-wider">Anonyme Einsendungen – wähle die beste:</p>
+    <div class="space-y-2.5 mb-4">
+      ${S.submissions.map((s, pos) => `
+        <button onclick="selectWinner(${pos})"
+          class="tap w-full text-left bg-card text-stone-900 rounded-xl p-4 text-sm font-semibold leading-snug ${S.judgeSelected === pos ? "neon-glow" : "border border-stone-300/20"}">
+          <span class="text-[10px] uppercase tracking-widest text-stone-500 block mb-1">Einsendung #${pos + 1}</span>
+          ${esc(WHITE_CARDS[s.cardIdx])}
+        </button>`).join("")}
+    </div>
+    <button onclick="confirmWinner()" ${S.judgeSelected === null ? "disabled" : ""}
+      class="tap w-full py-4 rounded-2xl font-display text-base ${S.judgeSelected === null ? "bg-stone-800 text-stone-600" : "bg-warn text-white card-shadow"}">
+      ${S.judgeSelected === null ? "EINSENDUNG ANTIPPEN…" : "GEWINNER KÜREN 🏆"}
+    </button>`;
+}
+
+function renderResult() {
+  const r = S.lastRound;
+  return `
+    ${header("Rundenergebnis")}
+    ${scoreboard()}
+    <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow mb-4 slide-up">
+      <p class="text-sm font-bold leading-snug text-stone-400 mb-3">${blackText(r.blackIdx)}</p>
+      <div class="bg-card text-stone-900 rounded-xl p-4 neon-glow">
+        <span class="text-[10px] uppercase tracking-widest text-neon font-extrabold block mb-1">🏆 Siegerkarte – ${esc(r.winnerName)}</span>
+        <p class="text-base font-extrabold leading-snug">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
+      </div>
+      ${r.czarIsBot ? `<p class="text-[11px] text-stone-500 mt-3">🤖 ${esc(r.czarName)} hat als Bot-Boss völlig willkürlich entschieden. Wie im echten Internet.</p>` : ""}
+    </div>
+    <p class="text-xs text-stone-500 mb-2 uppercase tracking-wider">Alle Einsendungen aufgedeckt:</p>
+    <div class="space-y-2 mb-5 max-h-56 overflow-y-auto scroll-thin">
+      ${r.reveals.map(rv => `
+        <div class="flex items-center gap-3 bg-panel border ${rv.won ? "border-neon" : "border-stone-800"} rounded-xl px-3.5 py-2.5 text-[13px]">
+          <span class="shrink-0 font-bold ${rv.won ? "text-neon" : "text-stone-500"}">${rv.won ? "🏆" : "💀"} ${esc(rv.name)}</span>
+          <span class="text-stone-300 leading-snug">${esc(WHITE_CARDS[rv.cardIdx])}</span>
+        </div>`).join("")}
+    </div>
+    <button onclick="nextRound()" class="tap w-full py-4 rounded-2xl font-display text-base bg-neon text-white card-shadow">
+      NÄCHSTE RUNDE ▶
+    </button>`;
+}
+
+function renderGameOver() {
+  const r = S.lastRound;
+  const champ = S.players.slice().sort((a, b) => b.score - a.score)[0];
+  const ranking = S.players.slice().sort((a, b) => b.score - a.score);
+  return `
+    ${header("Spielende")}
+    <div class="flex-1 flex flex-col justify-center py-8">
+      <div class="text-center mb-6 slide-up">
+        <div class="text-6xl mb-3">🏆</div>
+        <p class="text-stone-400 text-sm mb-1">Offiziell am meisten getriggert hat:</p>
+        <p class="font-display text-4xl text-neon mb-2">${esc(champ.name)}</p>
+        <p class="text-xs text-stone-500">${champ.score} Punkte – eine Karriere als Empörungsbeauftragte:r winkt.</p>
+      </div>
+      <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow mb-4">
+        <p class="text-[10px] uppercase tracking-widest text-stone-500 mb-2">Finale Siegerkarte</p>
+        <p class="text-sm text-stone-400 leading-snug mb-3">${blackText(r.blackIdx)}</p>
+        <div class="bg-card text-stone-900 rounded-xl p-4">
+          <p class="text-base font-extrabold leading-snug">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
+        </div>
+      </div>
+      <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-6">
+        <p class="text-xs uppercase tracking-wider text-stone-500 mb-3">Endstand</p>
+        ${ranking.map((p, i) => `
+          <div class="flex items-center justify-between py-1.5 text-sm ${i === 0 ? "text-neon font-extrabold" : "text-stone-300"}">
+            <span>${i + 1}. ${esc(p.name)}${p.isBot ? " 🤖" : ""}</span>
+            <span class="font-bold">${p.score}</span>
+          </div>`).join("")}
+      </div>
+      <button onclick="newGame()" class="tap w-full py-4 rounded-2xl font-display text-base bg-neon text-white card-shadow">
+        NEUES SPIEL ▶
+      </button>
+    </div>`;
+}
+
+function render() {
+  const app = document.getElementById("app");
+  let html = "";
+  switch (S.phase) {
+    case "setup":       html = renderSetup(); break;
+    case "pass_answer": html = renderPassAnswer(); break;
+    case "answer":      html = renderAnswer(); break;
+    case "pass_judge":  html = renderPassJudge(); break;
+    case "judge":       html = renderJudge(); break;
+    case "result":      html = renderResult(); break;
+    case "gameover":    html = renderGameOver(); break;
+    default:
+      S = defaultState();
+      html = renderSetup();
+  }
+  app.innerHTML = html;
+  window.scrollTo(0, 0);
+}
+
+/* ============================================================
+   Init
+   ============================================================ */
+
+S = load() || defaultState();
+// Wer mitten in einer Kartenauswahl neu lädt, landet sicherheitshalber wieder
+// auf dem Übergabe-Screen – so sieht niemand fremde Handkarten.
+if (S.phase === "answer") S.phase = "pass_answer";
+if (S.phase === "judge") S.phase = "pass_judge";
+S.selectedCard = null;
+S.judgeSelected = null;
+render();
+</script>
+</body>
+</html>
