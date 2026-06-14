@@ -805,12 +805,12 @@ function header(t, sub) {
   const showReset = S.phase !== "setup";
   const btnStyle = "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);border-radius:12px;padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#a8a29e;cursor:pointer;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap;";
   return `
-    <header style="padding:22px 0 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-      <div>
-        <h1 style="font-family:'Archivo Black',sans-serif;font-size:30px;line-height:.95;letter-spacing:-.02em;margin:0;">GETRIGGERT<span style="color:#ff2d78;">!</span></h1>
+    <header style="padding:22px 0 16px;display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px 8px;">
+      <div style="min-width:0;">
+        <h1 style="font-family:'Archivo Black',sans-serif;font-size:clamp(24px,7vw,30px);line-height:.95;letter-spacing:-.02em;margin:0;">GETRIGGERT<span style="color:#ff2d78;">!</span></h1>
         <p style="font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:#78716c;margin:6px 0 0;">${esc(sub)}</p>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">
+      <div style="display:flex;gap:8px;flex-shrink:0;margin-left:auto;">
         <button class="tap" onclick="toggleHelp()" style="${btnStyle}">? Anleitung</button>
         ${showReset ? `<button class="tap" onclick="resetAll()" style="${btnStyle}">Reset</button>` : ""}
       </div>
