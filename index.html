@@ -4,46 +4,32 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>GETRIGGERT! – Ein Spiel, zwei Runden, drei Anzeigen.</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          ink: "#0a0a0b",
-          panel: "#141417",
-          card: "#f5f5f4",
-          neon: "#ff2d78",
-          warn: "#ff3b30",
-        },
-        fontFamily: {
-          display: ["Archivo Black", "Arial Black", "sans-serif"],
-          body: ["Inter", "system-ui", "sans-serif"],
-        },
-      },
-    },
-  };
-</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
 <style>
-  body { background: #0a0a0b; }
-  .card-shadow { box-shadow: 0 10px 30px rgba(0,0,0,.55); }
-  .neon-glow { box-shadow: 0 0 0 2px #ff2d78, 0 0 24px rgba(255,45,120,.55); }
-  .tap { transition: transform .12s ease, box-shadow .12s ease; }
+  html, body { margin: 0; padding: 0; background: #08080a; overflow-x: hidden; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #e7e5e4; min-height: 100vh; }
+  ::selection { background: #ff2d78; color: #fff; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 3px; }
+  input::placeholder { color: #57534e; }
+  button { font-family: inherit; }
+  .tap { transition: transform .12s ease, filter .12s ease; }
   .tap:active { transform: scale(.97); }
-  ::selection { background:#ff2d78; color:#fff; }
-  .scroll-thin::-webkit-scrollbar { width: 6px; }
-  .scroll-thin::-webkit-scrollbar-thumb { background:#333; border-radius:3px; }
-  @keyframes pulseWarn { 0%,100%{opacity:1} 50%{opacity:.55} }
-  .pulse-warn { animation: pulseWarn 1.6s infinite; }
-  @keyframes slideUp { from { transform: translateY(16px); opacity:0 } to { transform: translateY(0); opacity:1 } }
-  .slide-up { animation: slideUp .25s ease both; }
+  .neon-btn:hover { filter: brightness(1.06); }
+  @keyframes gtSlideUp { from { transform: translateY(16px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+  @keyframes gtPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+  @keyframes gtShard { 0% { transform: translateY(-12vh) rotate(0deg); opacity: 0 } 12% { opacity: 1 } 100% { transform: translateY(115vh) rotate(680deg); opacity: 0 } }
+  @keyframes gtGlowDrift { 0%,100% { opacity: .85 } 50% { opacity: 1 } }
 </style>
 </head>
-<body class="font-body text-stone-100 min-h-screen">
+<body>
 
-<div id="app" class="max-w-xl mx-auto min-h-screen flex flex-col px-4 pb-8"></div>
+<div style="position:fixed;inset:0;z-index:0;pointer-events:none;animation:gtGlowDrift 9s ease-in-out infinite;background:radial-gradient(58% 38% at 16% 10%, rgba(255,45,120,.20), transparent 60%), radial-gradient(50% 40% at 88% 82%, rgba(120,70,255,.16), transparent 62%), radial-gradient(42% 30% at 74% 6%, rgba(255,45,120,.10), transparent 60%);"></div>
+
+<div id="app" style="position:relative;z-index:1;max-width:600px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding:0 16px 40px;"></div>
 
 <script>
 "use strict";
@@ -191,7 +177,6 @@ const WHITE_CARDS = [
   "Ein Fair-Trade-Kaffee für 7,50 Euro, getrunken während einer Demo gegen die Armut",
   "Den Sozialismus so lange geil finden, bis man das erste Mal selbst Steuern zahlt",
 
-
   // Rechtsextreme / Altheimatliche / Patrioten
   "Ein thor-steinar-tragender Kleingärtner beim Falschparker-Anzeigen",
   "Reichsbürger, die ihren Personalausweis gegen ein laminiertes Stück Papier tauschen",
@@ -289,6 +274,8 @@ const BOT_NAMES = ["Bot-Karen", "Algorithmus-Achim", "KI-Kevin", "Cyber-Chantal"
 const HAND_SIZE = 8;
 const REDRAWS_PER_GAME = 2;
 const STORAGE_KEY = "getriggert_state_v1";
+// Glas-Intensität: "dezent" | "mittel" | "voll"
+const GLASS_LEVEL = "dezent";
 // Signatur der Kartendecks: ändert sich der Kartenbestand im Code, passen
 // gespeicherte Karten-Indizes nicht mehr – alte Spielstände werden dann verworfen.
 const DECK_SIG = BLACK_CARDS.length + ":" + WHITE_CARDS.length;
@@ -298,6 +285,7 @@ const DECK_SIG = BLACK_CARDS.length + ":" + WHITE_CARDS.length;
    ============================================================ */
 
 let S = null;
+let _lastPhase = null; // für Scroll-to-top nur bei Phasenwechsel
 
 function defaultState() {
   return {
@@ -323,6 +311,9 @@ function defaultState() {
     judgeSelected: null,
     lastRound: null,
     roundNum: 0,
+    shards: [],
+    helpOpen: false,
+    pending: null,
   };
 }
 
@@ -347,15 +338,6 @@ function load() {
     parsed.deckSig = DECK_SIG;
     return parsed;
   } catch (e) { return null; }
-}
-
-function resetAll() {
-  if (!confirm("Wirklich alles zurücksetzen? Der Spielstand wird gelöscht.")) return;
-  const keepPlayers = S && S.setupPlayers ? S.setupPlayers : null;
-  S = defaultState();
-  if (keepPlayers) S.setupPlayers = keepPlayers;
-  save();
-  render();
 }
 
 /* ============================================================
@@ -400,8 +382,7 @@ function refillHand(player) {
 function startGame() {
   const setup = S.setupPlayers;
   const humans = setup.filter(p => !p.isBot).length;
-  if (setup.length < 3) { alert("Mindestens 3 Spieler!"); return; }
-  if (humans < 1) { alert("Mindestens ein menschlicher Spieler muss dabei sein – sonst empört sich hier ja niemand echt."); return; }
+  if (setup.length < 3 || humans < 1) return;
 
   let botCount = 0, humanCount = 0;
   const players = setup.map(p => {
@@ -421,6 +402,7 @@ function startGame() {
   S.czarIdx = Math.floor(Math.random() * players.length);
   S.roundNum = 0;
   S.lastRound = null;
+  S.shards = [];
   players.forEach(refillHand);
   startRound();
 }
@@ -469,7 +451,7 @@ function showHand() {
 
 function selectCard(pos) {
   S.selectedCard = pos;
-  render(); // transient, kein save nötig – schadet aber nicht
+  render();
 }
 
 function submitCard() {
@@ -490,10 +472,14 @@ function submitCard() {
 }
 
 function redrawHand() {
-  const playerIdx = S.answerQueue[S.queuePos];
-  const player = S.players[playerIdx];
+  const player = S.players[S.answerQueue[S.queuePos]];
   if (!player || player.redraws <= 0) return;
-  if (!confirm("Komplette Hand abwerfen und " + HAND_SIZE + " neue Karten ziehen? (Noch " + player.redraws + "× möglich)")) return;
+  askConfirm("Komplette Hand abwerfen und " + HAND_SIZE + " neue Karten ziehen? (Noch " + player.redraws + "× möglich)", "redraw", "Hand tauschen");
+}
+
+function _doRedraw() {
+  const player = S.players[S.answerQueue[S.queuePos]];
+  if (!player || player.redraws <= 0) return;
   player.redraws--;
   S.whiteDiscard.push(...player.hand);
   player.hand = [];
@@ -504,7 +490,10 @@ function redrawHand() {
 }
 
 function skipBlack() {
-  if (!confirm("Schwarze Karte skippen? Sie wird ersetzt, bereits gespielte Antworten gehen zurück auf die Hand.")) return;
+  askConfirm("Schwarze Karte skippen? Sie wird ersetzt, bereits gespielte Antworten gehen zurück auf die Hand.", "skip", "Skippen");
+}
+
+function _doSkip() {
   S.submissions.forEach(s => S.players[s.playerIdx].hand.push(s.cardIdx));
   S.submissions = [];
   S.blackDiscard.push(S.currentBlack);
@@ -515,7 +504,6 @@ function skipBlack() {
   botsSubmit();
   S.queuePos = 0;
   if (S.answerQueue.length === 0) {
-    // Alle Mitspieler sind Bots – direkt zurück zum (menschlichen) Urteil
     goJudge();
   } else {
     S.phase = "pass_answer";
@@ -529,8 +517,7 @@ function goJudge() {
   const czar = S.players[S.czarIdx];
   if (czar.isBot) {
     // Bot-Boss entscheidet gnadenlos zufällig
-    const winnerPos = Math.floor(Math.random() * S.submissions.length);
-    finishRound(winnerPos);
+    finishRound(Math.floor(Math.random() * S.submissions.length));
   } else {
     S.phase = "pass_judge";
   }
@@ -579,7 +566,12 @@ function finishRound(winnerPos) {
   S.submissions = [];
   S.currentBlack = null;
 
-  S.phase = winner.score >= S.targetScore ? "gameover" : "result";
+  if (winner.score >= S.targetScore) {
+    S.phase = "gameover";
+    S.shards = makeShards(30);
+  } else {
+    S.phase = "result";
+  }
   save();
   render();
 }
@@ -602,6 +594,42 @@ function newGame() {
 
 function toggleHelp() {
   S.helpOpen = !S.helpOpen;
+  render();
+}
+
+/* ============================================================
+   Bestätigungs-Dialog (Glas-Modal statt nativem confirm)
+   ============================================================ */
+
+function askConfirm(message, type, yes) {
+  S.pending = { message, type, yes };
+  render();
+}
+
+function cancelConfirm() {
+  S.pending = null;
+  render();
+}
+
+function doConfirm() {
+  const p = S.pending;
+  S.pending = null;
+  if (!p) { render(); return; }
+  if (p.type === "reset") _doReset();
+  else if (p.type === "redraw") _doRedraw();
+  else if (p.type === "skip") _doSkip();
+  else render();
+}
+
+function resetAll() {
+  askConfirm("Wirklich alles zurücksetzen? Der Spielstand wird gelöscht.", "reset", "Zurücksetzen");
+}
+
+function _doReset() {
+  const keepPlayers = S && S.setupPlayers ? S.setupPlayers : null;
+  S = defaultState();
+  if (keepPlayers) S.setupPlayers = keepPlayers;
+  save();
   render();
 }
 
@@ -634,13 +662,126 @@ function setupName(i, val) {
   save(); // kein render – Input behält den Fokus
 }
 
-function setupTarget(val) {
-  S.targetScore = parseInt(val, 10) || 5;
+function setupTarget(n) {
+  S.targetScore = n;
   save();
+  render();
 }
 
 /* ============================================================
-   Rendering
+   Konfetti-Scherben
+   ============================================================ */
+
+function makeShards(n) {
+  const cols = ["rgba(255,45,120,.9)", "rgba(255,255,255,.85)", "rgba(170,120,255,.85)", "rgba(255,90,150,.9)"];
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({
+      left: Math.round(Math.random() * 100),
+      size: 5 + Math.round(Math.random() * 6),
+      rot: Math.round(Math.random() * 360),
+      dur: (2.4 + Math.random() * 1.8).toFixed(2),
+      delay: (Math.random() * 0.7).toFixed(2),
+      col: cols[i % cols.length],
+    });
+  }
+  return out;
+}
+
+/* ============================================================
+   Theme – Liquid Glass
+   ============================================================ */
+
+const UNITLESS = new Set(["opacity", "fontWeight", "lineHeight", "zIndex", "flex", "flexGrow", "flexShrink", "order"]);
+
+// Style-Objekt (camelCase) -> Inline-CSS-String
+function css(o) {
+  return Object.keys(o).filter(k => o[k] != null).map(k => {
+    const prop = k.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
+    let v = o[k];
+    if (typeof v === "number" && !UNITLESS.has(k)) v = v + "px";
+    return prop + ":" + v;
+  }).join(";");
+}
+
+function theme() {
+  const lvl = GLASS_LEVEL;
+  const P = ({
+    dezent: { blur: 10, sat: 1.1, bg: 0.04, bd: 0.10, sh: "0 12px 30px rgba(0,0,0,.45)", hi: 0.10, neon: 0.30 },
+    mittel: { blur: 18, sat: 1.35, bg: 0.07, bd: 0.14, sh: "0 18px 44px rgba(0,0,0,.5)", hi: 0.16, neon: 0.38 },
+    voll: { blur: 30, sat: 1.7, bg: 0.10, bd: 0.22, sh: "0 26px 60px rgba(0,0,0,.6)", hi: 0.26, neon: 0.5 },
+  })[lvl] || { blur: 18, sat: 1.35, bg: 0.07, bd: 0.14, sh: "0 18px 44px rgba(0,0,0,.5)", hi: 0.16, neon: 0.38 };
+  const bf = "blur(" + P.blur + "px) saturate(" + P.sat + ")";
+  const sPanel = {
+    borderRadius: 20, padding: 16, marginBottom: 16,
+    background: "linear-gradient(180deg, rgba(255,255,255," + P.hi + ") 0%, rgba(255,255,255,0) 42%), rgba(255,255,255," + P.bg + ")",
+    border: "1px solid rgba(255,255,255," + P.bd + ")",
+    backdropFilter: bf, WebkitBackdropFilter: bf,
+    boxShadow: P.sh + ", inset 0 1px 0 rgba(255,255,255," + (P.hi + 0.05) + "), inset 0 -1px 0 rgba(0,0,0,.2)",
+  };
+  const sDark = {
+    borderRadius: 20, padding: 20, marginBottom: 8, position: "relative", overflow: "hidden",
+    background: "linear-gradient(180deg, rgba(255,45,120,.08) 0%, rgba(0,0,0,0) 42%), linear-gradient(180deg, rgba(22,12,17,.62), rgba(8,6,9,.55))",
+    border: "1px solid rgba(255,45,120," + (lvl === "voll" ? 0.5 : 0.33) + ")",
+    backdropFilter: bf, WebkitBackdropFilter: bf,
+    boxShadow: "0 0 0 1px rgba(255,45,120,.12), " + P.sh + ", inset 0 1px 0 rgba(255,255,255,.07)",
+    animation: "gtSlideUp .28s ease both",
+  };
+  const lightBase = {
+    color: "#0a0a0b", borderRadius: 14,
+    background: "linear-gradient(180deg, rgba(255,255,255,.96), rgba(238,238,236,.83))",
+    border: "1px solid rgba(255,255,255,.7)",
+    backdropFilter: "blur(8px) saturate(1.2)", WebkitBackdropFilter: "blur(8px) saturate(1.2)",
+    boxShadow: "0 8px 22px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.9)",
+  };
+  const neonRing = "0 0 0 2px #ff2d78, 0 0 26px rgba(255,45,120,.55), 0 8px 22px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.9)";
+  const sInput = {
+    flex: 1, minWidth: 0, borderRadius: 12, padding: "11px 12px", fontSize: 14, color: "#e7e5e4",
+    background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.16)", outline: "none",
+    backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", fontFamily: "'Inter',system-ui,sans-serif",
+  };
+  const neonFill = "linear-gradient(180deg,#ff5a96 0%,#ff2d78 58%,#e21e64 100%)";
+  const neonShadow = "0 12px 30px rgba(255,45,120,.42), inset 0 1px 0 rgba(255,255,255,.45), inset 0 -2px 6px rgba(150,0,50,.35)";
+  const bigBase = {
+    borderRadius: 18, border: "none", cursor: "pointer", color: "#fff",
+    fontFamily: "'Archivo Black',sans-serif", letterSpacing: ".01em",
+    background: neonFill, boxShadow: neonShadow,
+  };
+  const warnFill = "linear-gradient(180deg,#ff6b61 0%,#ff3b30 58%,#d92b22 100%)";
+  const disabledBtn = {
+    background: "rgba(255,255,255,.05)", color: "#57534e", boxShadow: "none", cursor: "default",
+    border: "1px solid rgba(255,255,255,.08)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+  };
+  const t = {
+    P, bf, sPanel, sDark, lightBase, neonRing, sInput, bigBase, neonFill, warnFill, disabledBtn,
+    sBigNeon: Object.assign({}, bigBase, { width: "auto", display: "inline-block", padding: "16px 30px", fontSize: 16 }),
+    sBigNeonFull: Object.assign({}, bigBase, { width: "100%", padding: "16px", fontSize: 16 }),
+    sLightPlain: Object.assign({}, lightBase, { padding: 16, border: "1px solid rgba(255,255,255,.6)" }),
+    winnerCardStyle: Object.assign({}, lightBase, { padding: 16, border: "1px solid #ff2d78", boxShadow: "0 0 0 2px rgba(255,45,120,.45), 0 0 28px rgba(255,45,120,.4), inset 0 1px 0 rgba(255,255,255,.9)" }),
+    sDash: {
+      width: "100%", marginTop: 8, fontSize: 11, textTransform: "uppercase", letterSpacing: ".1em", color: "#78716c",
+      border: "1px dashed rgba(255,255,255,.16)", borderRadius: 12, padding: "9px 12px", background: "transparent", cursor: "pointer",
+    },
+    sConfirmCard: {
+      maxWidth: 380, width: "100%", padding: 24, borderRadius: 22,
+      background: "linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.05))",
+      border: "1px solid rgba(255,255,255,.2)", backdropFilter: "blur(30px) saturate(1.6)", WebkitBackdropFilter: "blur(30px) saturate(1.6)",
+      boxShadow: "0 30px 70px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.3)", animation: "gtSlideUp .22s ease both",
+    },
+    sConfirmYes: { flex: 1, padding: "13px", borderRadius: 14, border: "none", background: neonFill, color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: "0 8px 20px rgba(255,45,120,.4), inset 0 1px 0 rgba(255,255,255,.4)" },
+    sConfirmNo: { flex: 1, padding: "13px", borderRadius: 14, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.05)", color: "#a8a29e", fontWeight: 700, fontSize: 14, cursor: "pointer" },
+    sOverlayCard: {
+      padding: 24, borderRadius: 22,
+      background: "linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.045))",
+      border: "1px solid rgba(255,255,255,.18)", backdropFilter: "blur(30px) saturate(1.5)", WebkitBackdropFilter: "blur(30px) saturate(1.5)",
+      boxShadow: "0 30px 70px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.26)", animation: "gtSlideUp .25s ease both",
+    },
+  };
+  return t;
+}
+
+/* ============================================================
+   Rendering-Helfer
    ============================================================ */
 
 function esc(str) {
@@ -649,329 +790,366 @@ function esc(str) {
   }[c]));
 }
 
+// Schwarze Karte: ______ als Neon-Lücke hervorheben
 function blackText(idx) {
-  const t = esc(BLACK_CARDS[idx]);
-  return t.replace(/______/g, '<span class="text-neon font-extrabold">______</span>');
+  if (idx === null || idx === undefined) return "";
+  const parts = String(BLACK_CARDS[idx]).split("______");
+  return parts.map(esc).join('<span style="color:#ff2d78;font-weight:900;">______</span>');
 }
 
-function header(sub) {
+/* ============================================================
+   Rendering – einzelne Bausteine
+   ============================================================ */
+
+function header(t, sub) {
+  const showReset = S.phase !== "setup";
+  const btnStyle = "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);border-radius:12px;padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#a8a29e;cursor:pointer;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap;";
   return `
-    <header class="pt-5 pb-4 flex items-start justify-between gap-3">
+    <header style="padding:22px 0 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
       <div>
-        <h1 class="font-display text-2xl leading-none tracking-tight">
-          GETRIGGERT<span class="text-neon">!</span>
-        </h1>
-        <p class="text-[11px] uppercase tracking-widest text-stone-500 mt-1">${sub}</p>
+        <h1 style="font-family:'Archivo Black',sans-serif;font-size:30px;line-height:.95;letter-spacing:-.02em;margin:0;">GETRIGGERT<span style="color:#ff2d78;">!</span></h1>
+        <p style="font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:#78716c;margin:6px 0 0;">${esc(sub)}</p>
       </div>
-      <div class="flex gap-2 shrink-0">
-        <button onclick="toggleHelp()" class="tap text-[11px] uppercase tracking-wider text-stone-500 border border-stone-800 rounded-lg px-3 py-2 hover:text-neon hover:border-neon">
-          ? Anleitung
-        </button>
-        ${S.phase !== "setup" ? `
-        <button onclick="resetAll()" class="tap text-[11px] uppercase tracking-wider text-stone-500 border border-stone-800 rounded-lg px-3 py-2 hover:text-warn hover:border-warn">
-          Reset
-        </button>` : ""}
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="tap" onclick="toggleHelp()" style="${btnStyle}">? Anleitung</button>
+        ${showReset ? `<button class="tap" onclick="resetAll()" style="${btnStyle}">Reset</button>` : ""}
       </div>
     </header>`;
 }
 
-function scoreboard() {
+function scoreboard(t) {
+  const chips = S.players.map((p, i) => {
+    const czar = i === S.czarIdx;
+    const chip = czar
+      ? { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 11px", borderRadius: 999, border: "1px solid rgba(255,45,120,.6)", background: "rgba(255,45,120,.14)", color: "#ff2d78", boxShadow: "0 0 16px rgba(255,45,120,.32)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }
+      : { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 11px", borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.05)", color: "#a8a29e", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" };
+    const scoreStyle = { fontWeight: 900, marginLeft: 2, color: czar ? "#ff2d78" : "#e7e5e4" };
+    const label = (czar ? "👑 " : "") + p.name + (p.isBot ? " 🤖" : "");
+    return `<div style="${css(chip)}"><span style="font-size:12px;">${esc(label)}</span><span style="${css(scoreStyle)}">${p.score}</span></div>`;
+  }).join("");
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">${chips}</div>`;
+}
+
+function blackCardEl(t, idx) {
   return `
-    <div class="flex flex-wrap gap-2 mb-4">
-      ${S.players.map((p, i) => `
-        <div class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border ${i === S.czarIdx ? "border-neon text-neon neon-glow bg-neon/10" : "border-stone-800 text-stone-400 bg-panel"}">
-          ${i === S.czarIdx ? "👑 " : ""}${esc(p.name)}${p.isBot ? " 🤖" : ""}
-          <span class="font-extrabold ${i === S.czarIdx ? "text-neon" : "text-stone-200"}">${p.score}</span>
-        </div>`).join("")}
+    <div style="${css(t.sDark)}">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:#ff2d78;margin-bottom:12px;animation:gtPulse 1.8s infinite;">⚠ Schwarze Karte · Runde ${S.roundNum}</div>
+      <p style="font-size:19px;font-weight:800;line-height:1.36;margin:0;">${blackText(idx)}</p>
     </div>`;
 }
 
-function blackCardEl(idx) {
+function skipBtn(t, label) {
+  return `<button class="tap" onclick="skipBlack()" style="${css(t.sDash)}">⏭ ${esc(label)}</button>`;
+}
+
+/* ============================================================
+   Rendering – Phasen
+   ============================================================ */
+
+function renderSetup(t) {
+  const len = S.setupPlayers.length;
+  const humans = S.setupPlayers.filter(p => !p.isBot).length;
+  const canAdd = len < 8;
+  const addBtnStyle = canAdd
+    ? { fontSize: 12, fontWeight: 700, padding: "8px 12px", borderRadius: 12, border: "none", background: t.neonFill, color: "#fff", cursor: "pointer", boxShadow: "0 6px 16px rgba(255,45,120,.35), inset 0 1px 0 rgba(255,255,255,.4)" }
+    : { fontSize: 12, fontWeight: 700, padding: "8px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.05)", color: "#57534e", cursor: "default" };
+
+  const items = S.setupPlayers.map((p, i) => {
+    const botsBefore = S.setupPlayers.slice(0, i).filter(x => x.isBot).length;
+    const humansBefore = i - botsBefore;
+    const ph = p.isBot ? BOT_NAMES[botsBefore % BOT_NAMES.length] : "Spieler " + (humansBefore + 1);
+    const botStyle = p.isBot
+      ? { flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,45,120,.5)", background: "rgba(255,45,120,.12)", color: "#ff2d78", cursor: "pointer", whiteSpace: "nowrap", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }
+      : { flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.04)", color: "#a8a29e", cursor: "pointer", whiteSpace: "nowrap", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" };
+    const removable = len > 3;
+    const removeStyle = removable
+      ? { flexShrink: 0, width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 12, border: "1px solid rgba(255,59,48,.4)", background: "rgba(255,59,48,.08)", color: "#ff3b30", cursor: "pointer" }
+      : { flexShrink: 0, width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,.06)", background: "transparent", color: "#3f3f46", cursor: "default" };
+    return `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="text" value="${esc(p.name)}" maxlength="16" placeholder="${esc(ph)}" oninput="setupName(${i}, this.value)" style="${css(t.sInput)}" />
+        <button class="tap" onclick="setupToggleBot(${i})" style="${css(botStyle)}">${p.isBot ? "🤖 Bot" : "🧍 Mensch"}</button>
+        <button class="tap" onclick="setupRemovePlayer(${i})" style="${css(removeStyle)}">✕</button>
+      </div>`;
+  }).join("");
+
+  const targets = [3, 5, 7, 10].map(n => {
+    const active = S.targetScore === n;
+    const style = active
+      ? { flex: 1, padding: "12px 0", borderRadius: 12, fontSize: 15, fontWeight: 900, border: "1px solid rgba(255,45,120,.6)", background: "rgba(255,45,120,.14)", color: "#ff2d78", cursor: "pointer", boxShadow: "0 0 18px rgba(255,45,120,.3), inset 0 1px 0 rgba(255,255,255,.15)" }
+      : { flex: 1, padding: "12px 0", borderRadius: 12, fontSize: 15, fontWeight: 900, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.04)", color: "#a8a29e", cursor: "pointer", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" };
+    return `<button class="tap" onclick="setupTarget(${n})" style="${css(style)}">${n}</button>`;
+  }).join("");
+
+  const startStyle = humans >= 1
+    ? Object.assign({}, t.sBigNeonFull, { padding: "17px", fontSize: 19 })
+    : Object.assign({}, t.sBigNeonFull, t.disabledBtn, { padding: "17px", fontSize: 19 });
+
   return `
-    <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow slide-up">
-      <div class="text-[10px] uppercase tracking-widest text-neon mb-3 pulse-warn">⚠ Schwarze Karte · Runde ${S.roundNum}</div>
-      <p class="text-lg font-extrabold leading-snug">${blackText(idx)}</p>
+    ${header(t, "Ein Spiel, zwei Runden, drei Anzeigen.")}
+    <div style="background:rgba(255,59,48,.1);border:1px solid rgba(255,59,48,.4);border-radius:14px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#ff7a73;line-height:1.5;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:gtSlideUp .3s ease both;">
+      ⚠ <b>TRIGGER-WARNUNG:</b> Dieses Spiel enthält Satire, schwarzen Humor und Meinungen, die garantiert irgendwen empören. Weiterspielen auf eigene Gefahr.
+    </div>
+
+    <div style="${css(t.sPanel)}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h2 style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#d6d3d1;margin:0;">Spieler (${len}/8)</h2>
+        <button class="tap" onclick="setupAddPlayer()" style="${css(addBtnStyle)}">+ Spieler</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${items}</div>
+      <p style="font-size:11px;color:#78716c;margin:12px 0 0;">Wähle Bots, wenn du keine Freunde hast.</p>
+    </div>
+
+    <div style="${css(t.sPanel)}">
+      <h2 style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#d6d3d1;margin:0 0 12px;">Punkteziel</h2>
+      <div style="display:flex;gap:8px;">${targets}</div>
+    </div>
+
+    <button class="tap neon-btn" onclick="startGame()" style="${css(startStyle)}">EMPÖRUNG STARTEN ▶</button>
+    <p style="text-align:center;font-size:11px;color:#57534e;margin-top:16px;">${BLACK_CARDS.length} schwarze · ${WHITE_CARDS.length} weiße Karten im Deck</p>`;
+}
+
+function renderPassAnswer(t) {
+  const czar = S.players[S.czarIdx];
+  const name = S.players[S.answerQueue[S.queuePos]].name;
+  return `
+    ${header(t, "Gerät weitergeben")}
+    ${scoreboard(t)}
+    ${blackCardEl(t, S.currentBlack)}
+    ${skipBtn(t, "Niemand hat was Passendes? Schwarze Karte skippen")}
+    <div style="flex:1;display:grid;place-items:center;padding:36px 0;">
+      <div style="text-align:center;animation:gtSlideUp .3s ease both;">
+        <div style="font-size:52px;margin-bottom:16px;">🤫</div>
+        <p style="color:#a8a29e;font-size:14px;margin:0 0 4px;">Empörungsbeauftragter dieser Runde: <span style="color:#ff2d78;font-weight:800;">${esc(czar.name)}</span></p>
+        <p style="font-size:20px;font-weight:800;margin:0 0 24px;line-height:1.3;">Gib das Gerät an<br><span style="font-family:'Archivo Black',sans-serif;font-size:30px;color:#ff2d78;">${esc(name)}</span></p>
+        <button class="tap neon-btn" onclick="showHand()" style="${css(t.sBigNeon)}">ICH BIN ${esc(name.toUpperCase())} – KARTEN ZEIGEN</button>
+        <p style="font-size:11px;color:#57534e;margin-top:16px;">Niemand sonst gucken! Sonst gibt's eine Anzeige.</p>
+      </div>
     </div>`;
 }
 
-function helpOverlay() {
+function renderAnswer(t) {
+  const player = S.players[S.answerQueue[S.queuePos]];
+  const hand = player.hand.map((cardIdx, pos) => {
+    const sel = S.selectedCard === pos;
+    const style = Object.assign({}, t.lightBase, { textAlign: "left", padding: 12, fontSize: 13, fontWeight: 600, lineHeight: 1.3, minHeight: 90, cursor: "pointer" });
+    if (sel) { style.border = "1px solid #ff2d78"; style.boxShadow = t.neonRing; }
+    return `<button class="tap" onclick="selectCard(${pos})" style="${css(style)}">${esc(WHITE_CARDS[cardIdx])}</button>`;
+  }).join("");
+
+  const redrawStyle = player.redraws > 0
+    ? { flexShrink: 0, fontSize: 11, fontWeight: 700, padding: "8px 12px", borderRadius: 12, border: "1px solid rgba(255,45,120,.5)", background: "rgba(255,45,120,.12)", color: "#ff2d78", cursor: "pointer", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }
+    : { flexShrink: 0, fontSize: 11, fontWeight: 700, padding: "8px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "transparent", color: "#57534e", cursor: "default" };
+
+  const ok = S.selectedCard !== null;
+  const submitStyle = ok ? t.sBigNeonFull : Object.assign({}, t.sBigNeonFull, t.disabledBtn);
+
   return `
-  <div class="fixed inset-0 z-50 bg-black/85 overflow-y-auto scroll-thin" onclick="if (event.target === this) toggleHelp()">
-    <div class="max-w-xl mx-auto px-4 py-8">
-      <div class="bg-panel border border-stone-800 rounded-2xl p-5 card-shadow slide-up">
-        <div class="flex items-start justify-between gap-3 mb-5">
-          <h2 class="font-display text-xl leading-tight">SO WIRST DU<br><span class="text-neon">GETRIGGERT!</span></h2>
-          <button onclick="toggleHelp()" class="tap shrink-0 w-9 h-9 grid place-items-center rounded-lg border border-stone-700 text-stone-400 hover:text-warn hover:border-warn">✕</button>
+    ${header(t, "Wähle deine fieseste Karte")}
+    ${scoreboard(t)}
+    ${blackCardEl(t, S.currentBlack)}
+    ${skipBtn(t, "Niemand hat was Passendes? Schwarze Karte skippen")}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 10px;">
+      <p style="font-size:12px;color:#78716c;text-transform:uppercase;letter-spacing:.12em;margin:0;">Deine Hand, ${esc(player.name)}:</p>
+      <button class="tap" onclick="redrawHand()" style="${css(redrawStyle)}">🔄 Neue Hand (${player.redraws}×)</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">${hand}</div>
+    <button class="tap neon-btn" onclick="submitCard()" style="${css(submitStyle)}">${ok ? "VERDECKT EINREICHEN ✓" : "KARTE ANTIPPEN…"}</button>`;
+}
+
+function renderPassJudge(t) {
+  const czar = S.players[S.czarIdx];
+  return `
+    ${header(t, "Alle Antworten sind drin")}
+    ${scoreboard(t)}
+    ${blackCardEl(t, S.currentBlack)}
+    <div style="flex:1;display:grid;place-items:center;padding:36px 0;">
+      <div style="text-align:center;animation:gtSlideUp .3s ease both;">
+        <div style="font-size:52px;margin-bottom:16px;">⚖️</div>
+        <p style="font-size:20px;font-weight:800;margin:0 0 24px;line-height:1.3;">Gib das Gerät an<br><span style="font-family:'Archivo Black',sans-serif;font-size:30px;color:#ff2d78;">${esc(czar.name)}</span></p>
+        <p style="color:#a8a29e;font-size:14px;margin:0 0 24px;">Zeit für das Urteil des Empörungsbeauftragten.</p>
+        <button class="tap neon-btn" onclick="showJudging()" style="${css(t.sBigNeon)}">URTEIL FÄLLEN ⚖</button>
+      </div>
+    </div>`;
+}
+
+function renderJudge(t) {
+  const subs = S.submissions.map((s, pos) => {
+    const sel = S.judgeSelected === pos;
+    const style = Object.assign({}, t.lightBase, { textAlign: "left", width: "100%", padding: 16, fontSize: 14, fontWeight: 600, lineHeight: 1.3, cursor: "pointer" });
+    if (sel) { style.border = "1px solid #ff2d78"; style.boxShadow = t.neonRing; }
+    return `<button class="tap" onclick="selectWinner(${pos})" style="${css(style)}"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:#78716c;display:block;margin-bottom:5px;">Einsendung #${pos + 1}</span>${esc(WHITE_CARDS[s.cardIdx])}</button>`;
+  }).join("");
+
+  const ok = S.judgeSelected !== null;
+  const judgeStyle = ok
+    ? Object.assign({}, t.bigBase, { width: "100%", padding: "16px", fontSize: 16, background: t.warnFill, boxShadow: "0 12px 30px rgba(255,59,48,.4), inset 0 1px 0 rgba(255,255,255,.4), inset 0 -2px 6px rgba(150,0,20,.35)" })
+    : Object.assign({}, t.sBigNeonFull, t.disabledBtn);
+
+  return `
+    ${header(t, "Wähle den Gewinner")}
+    ${scoreboard(t)}
+    ${blackCardEl(t, S.currentBlack)}
+    ${skipBtn(t, "Alles Müll? Schwarze Karte skippen – Antworten gehen zurück")}
+    <p style="font-size:12px;color:#78716c;margin:16px 0 10px;text-transform:uppercase;letter-spacing:.12em;">Anonyme Einsendungen – wähle die beste:</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">${subs}</div>
+    <button class="tap neon-btn" onclick="confirmWinner()" style="${css(judgeStyle)}">${ok ? "GEWINNER KÜREN 🏆" : "EINSENDUNG ANTIPPEN…"}</button>`;
+}
+
+function renderResult(t) {
+  const r = S.lastRound;
+  const reveals = r.reveals.map(rv => {
+    const nameStyle = { flexShrink: 0, fontWeight: 700, color: rv.won ? "#ff2d78" : "#78716c" };
+    const rowStyle = rv.won
+      ? { display: "flex", alignItems: "center", gap: 12, borderRadius: 14, padding: "10px 14px", fontSize: 13, border: "1px solid rgba(255,45,120,.6)", background: "rgba(255,45,120,.08)", boxShadow: "0 0 16px rgba(255,45,120,.2)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }
+      : { display: "flex", alignItems: "center", gap: 12, borderRadius: 14, padding: "10px 14px", fontSize: 13, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" };
+    const tag = (rv.won ? "🏆 " : "💀 ") + rv.name;
+    return `<div style="${css(rowStyle)}"><span style="${css(nameStyle)}">${esc(tag)}</span><span style="color:#d6d3d1;line-height:1.3;">${esc(WHITE_CARDS[rv.cardIdx])}</span></div>`;
+  }).join("");
+
+  return `
+    ${header(t, "Rundenergebnis")}
+    ${scoreboard(t)}
+    <div style="${css(t.sDark)}">
+      <p style="font-size:14px;font-weight:700;line-height:1.36;color:#a8a29e;margin:0 0 12px;">${blackText(r.blackIdx)}</p>
+      <div style="${css(t.winnerCardStyle)}">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:#ff2d78;font-weight:900;display:block;margin-bottom:5px;">🏆 Siegerkarte – ${esc(r.winnerName)}</span>
+        <p style="font-size:16px;font-weight:800;line-height:1.3;margin:0;">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
+      </div>
+      ${r.czarIsBot ? `<p style="font-size:11px;color:#78716c;margin:12px 0 0;line-height:1.45;">🤖 ${esc(r.czarName)} hat als Bot-Boss völlig willkürlich entschieden. Wie im echten Internet.</p>` : ""}
+    </div>
+    <p style="font-size:12px;color:#78716c;margin:0 0 8px;text-transform:uppercase;letter-spacing:.12em;">Alle Einsendungen aufgedeckt:</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;max-height:280px;overflow-y:auto;">${reveals}</div>
+    <button class="tap neon-btn" onclick="nextRound()" style="${css(t.sBigNeonFull)}">NÄCHSTE RUNDE ▶</button>`;
+}
+
+function renderGameOver(t) {
+  const r = S.lastRound;
+  const ranking = S.players.slice().sort((a, b) => b.score - a.score);
+  const champ = ranking[0];
+  const ranks = ranking.map((p, i) => {
+    const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", fontSize: 14, color: i === 0 ? "#ff2d78" : "#d6d3d1", fontWeight: i === 0 ? 900 : 400 };
+    const label = (i + 1) + ". " + p.name + (p.isBot ? " 🤖" : "");
+    return `<div style="${css(rowStyle)}"><span>${esc(label)}</span><span style="font-weight:800;">${p.score}</span></div>`;
+  }).join("");
+  const shards = (S.shards || []).map(s => {
+    const style = {
+      position: "absolute", top: 0, left: s.left + "%", width: s.size + "px", height: (s.size * 2.4) + "px",
+      background: s.col, borderRadius: "2px", opacity: 0, transform: "rotate(" + s.rot + "deg)",
+      boxShadow: "0 0 10px " + s.col, animation: "gtShard " + s.dur + "s linear " + s.delay + "s 1 both",
+    };
+    return `<div style="${css(style)}"></div>`;
+  }).join("");
+
+  return `
+    ${header(t, "Spielende")}
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 0;position:relative;">
+      <div style="position:absolute;inset:-40px 0 0;pointer-events:none;overflow:hidden;z-index:0;">${shards}</div>
+      <div style="text-align:center;margin-bottom:24px;animation:gtSlideUp .35s ease both;position:relative;z-index:1;">
+        <div style="font-size:64px;margin-bottom:12px;">🏆</div>
+        <p style="color:#a8a29e;font-size:14px;margin:0 0 4px;">Offiziell am meisten getriggert hat:</p>
+        <p style="font-family:'Archivo Black',sans-serif;font-size:40px;color:#ff2d78;margin:0 0 8px;line-height:1;">${esc(champ.name)}</p>
+        <p style="font-size:12px;color:#78716c;margin:0;">${champ.score} Punkte – eine Karriere als Empörungsbeauftragter winkt.</p>
+      </div>
+      <div style="${css(t.sDark)}">
+        <p style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:#78716c;margin:0 0 8px;">Finale Siegerkarte</p>
+        <p style="font-size:14px;color:#a8a29e;line-height:1.36;margin:0 0 12px;">${blackText(r.blackIdx)}</p>
+        <div style="${css(t.sLightPlain)}">
+          <p style="font-size:16px;font-weight:800;line-height:1.3;margin:0;">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
+        </div>
+      </div>
+      <div style="${css(t.sPanel)}">
+        <p style="font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#78716c;margin:0 0 10px;">Endstand</p>
+        ${ranks}
+      </div>
+      <button class="tap neon-btn" onclick="newGame()" style="${css(t.sBigNeonFull)}">NEUES SPIEL ▶</button>
+    </div>`;
+}
+
+/* ============================================================
+   Rendering – Overlays
+   ============================================================ */
+
+function helpOverlay(t) {
+  return `
+  <div onclick="if(event.target===this)toggleHelp()" style="position:fixed;inset:0;z-index:50;background:rgba(4,4,6,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-y:auto;">
+    <div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+      <div style="${css(t.sOverlayCard)}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;">
+          <h2 style="font-family:'Archivo Black',sans-serif;font-size:22px;line-height:1.1;margin:0;">SO WIRST DU<br><span style="color:#ff2d78;">GETRIGGERT!</span></h2>
+          <button class="tap" onclick="toggleHelp()" style="flex-shrink:0;width:36px;height:36px;display:grid;place-items:center;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:#a8a29e;cursor:pointer;">✕</button>
         </div>
 
-        <div class="mb-5">
-          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🎯 Das Ziel</h3>
-          <p class="text-sm text-stone-300 leading-relaxed">
-            Wirf auf jede schwarze Fragekarte die fieseste weiße Antwort aus deiner Hand. Überzeugt sie den Empörungsbeauftragten, kassierst du den Punkt – und wer zuerst das Punkteziel erreicht, hat offiziell <b class="text-stone-100">am meisten getriggert</b> und gewinnt. Mehr gibt es nicht. Außer der Wahrheit über deine Freunde.
-          </p>
+        <div style="margin-bottom:20px;">
+          <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.2em;color:#ff2d78;font-weight:900;margin:0 0 8px;">🎯 Das Ziel</h3>
+          <p style="font-size:14px;color:#d6d3d1;line-height:1.6;margin:0;">Wirf auf jede schwarze Fragekarte die fieseste weiße Antwort aus deiner Hand. Überzeugt sie den Empörungsbeauftragten, kassierst du den Punkt – und wer zuerst das Punkteziel erreicht, hat offiziell <b style="color:#e7e5e4;">am meisten getriggert</b> und gewinnt. Mehr gibt es nicht. Außer der Wahrheit über deine Freunde.</p>
         </div>
 
-        <div class="mb-5">
-          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🃏 Der Ablauf</h3>
-          <ol class="text-sm text-stone-300 leading-relaxed space-y-2 list-none">
-            <li><b class="text-stone-100">1.</b> Pro Runde ist einer der <b class="text-neon">Empörungsbeauftragte</b> 👑. Er zieht die schwarze Karte, lehnt sich zurück und urteilt am Ende. Mehr Macht hatte er nie.</li>
-            <li><b class="text-stone-100">2.</b> Alle anderen wählen <b class="text-stone-100">verdeckt</b> ihre Antwortkarte. Dafür wandert das Gerät reihum. Nicht spicken – sonst gibt's eine Anzeige.</li>
-            <li><b class="text-stone-100">3.</b> Bots reichen automatisch ein. Sofort, zufällig, ohne Gewissen. Wie der Algorithmus eben.</li>
-            <li><b class="text-stone-100">4.</b> Der Beauftragte sieht alle Antworten <b class="text-stone-100">anonym</b> und kürt die beste. Der Gewinner kassiert den Punkt.</li>
-            <li><b class="text-stone-100">5.</b> Danach wird aufgedeckt, wer was gespielt hat. Viel Spaß beim nächsten Familienfest.</li>
-            <li><b class="text-stone-100">6.</b> Karten nachziehen, Krone rotiert, nächste Runde. Bis einer heult oder gewinnt.</li>
-          </ol>
+        <div style="margin-bottom:20px;">
+          <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.2em;color:#ff2d78;font-weight:900;margin:0 0 8px;">🃏 Der Ablauf</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#d6d3d1;line-height:1.55;">
+            <div><b style="color:#e7e5e4;">1.</b> Pro Runde ist einer der <b style="color:#ff2d78;">Empörungsbeauftragte</b> 👑. Er zieht die schwarze Karte, lehnt sich zurück und urteilt am Ende. Mehr Macht hatte er nie.</div>
+            <div><b style="color:#e7e5e4;">2.</b> Alle anderen wählen <b style="color:#e7e5e4;">verdeckt</b> ihre Antwortkarte. Dafür wandert das Gerät reihum. Nicht spicken – sonst gibt's eine Anzeige.</div>
+            <div><b style="color:#e7e5e4;">3.</b> Bots reichen automatisch ein. Sofort, zufällig, ohne Gewissen. Wie der Algorithmus eben.</div>
+            <div><b style="color:#e7e5e4;">4.</b> Der Beauftragte sieht alle Antworten <b style="color:#e7e5e4;">anonym</b> und kürt die beste. Der Gewinner kassiert den Punkt.</div>
+            <div><b style="color:#e7e5e4;">5.</b> Danach wird aufgedeckt, wer was gespielt hat. Viel Spaß beim nächsten Familienfest.</div>
+            <div><b style="color:#e7e5e4;">6.</b> Karten nachziehen, Krone rotiert, nächste Runde. Bis einer heult oder gewinnt.</div>
+          </div>
         </div>
 
-        <div class="mb-6">
-          <h3 class="text-[11px] uppercase tracking-widest text-neon font-extrabold mb-2">🆘 Die Notfall-Mechaniken</h3>
-          <p class="text-sm text-stone-300 leading-relaxed mb-2">
-            <b class="text-stone-100">🔄 Neue Hand:</b> Deine Karten sind so schlecht, dass nicht mal die Lücke sie will? ${REDRAWS_PER_GAME}× pro Spiel darfst du die komplette Hand tauschen. Danach: mit den Entscheidungen leben. Wie im echten Leben.
-          </p>
-          <p class="text-sm text-stone-300 leading-relaxed">
-            <b class="text-stone-100">⏭ Karte skippen:</b> Die schwarze Karte zündet nicht? Überspringen geht jederzeit – bereits gespielte Antworten kommen zurück auf die Hand. Niemand verliert etwas. Außer Zeit.
-          </p>
+        <div style="margin-bottom:24px;">
+          <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.2em;color:#ff2d78;font-weight:900;margin:0 0 8px;">🆘 Die Notfall-Mechaniken</h3>
+          <p style="font-size:14px;color:#d6d3d1;line-height:1.6;margin:0 0 8px;"><b style="color:#e7e5e4;">🔄 Neue Hand:</b> Deine Karten sind so schlecht, dass nicht mal die Lücke sie will? ${REDRAWS_PER_GAME}× pro Spiel darfst du die komplette Hand tauschen. Danach: mit den Entscheidungen leben. Wie im echten Leben.</p>
+          <p style="font-size:14px;color:#d6d3d1;line-height:1.6;margin:0;"><b style="color:#e7e5e4;">⏭ Karte skippen:</b> Die schwarze Karte zündet nicht? Überspringen geht jederzeit – bereits gespielte Antworten kommen zurück auf die Hand. Niemand verliert etwas. Außer Zeit.</p>
         </div>
 
-        <button onclick="toggleHelp()" class="tap w-full py-3.5 rounded-xl font-display text-base bg-neon text-white card-shadow">
-          KAPIERT. EMPÖRT MICH! ▶
-        </button>
+        <button class="tap neon-btn" onclick="toggleHelp()" style="${css(t.sBigNeonFull)}">KAPIERT. EMPÖR MICH! ▶</button>
       </div>
     </div>
   </div>`;
 }
 
-function skipBtn(label) {
+function confirmOverlay(t) {
+  const p = S.pending;
   return `
-    <button onclick="skipBlack()"
-      class="tap w-full mt-2 text-[11px] uppercase tracking-wider text-stone-500 border border-dashed border-stone-800 rounded-lg px-3 py-2 hover:text-warn hover:border-warn">
-      ⏭ ${label}
-    </button>`;
-}
-
-function renderSetup() {
-  const humans = S.setupPlayers.filter(p => !p.isBot).length;
-  return `
-    ${header("Ein Spiel, zwei Runden, drei Anzeigen.")}
-    <div class="bg-warn/10 border border-warn/40 rounded-xl px-4 py-3 mb-5 text-xs text-warn leading-relaxed slide-up">
-      ⚠ <b>TRIGGER-WARNUNG:</b> Dieses Spiel enthält Satire, schwarzen Humor und Meinungen, die garantiert irgendwen empören. Weiterspielen auf eigene Gefahr.
-    </div>
-
-    <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-extrabold uppercase tracking-wider text-stone-300">Spieler (${S.setupPlayers.length}/8)</h2>
-        <button onclick="setupAddPlayer()" ${S.setupPlayers.length >= 8 ? "disabled" : ""}
-          class="tap text-xs font-bold px-3 py-1.5 rounded-lg ${S.setupPlayers.length >= 8 ? "bg-stone-800 text-stone-600" : "bg-neon text-white"}">
-          + Spieler
-        </button>
-      </div>
-      <div class="space-y-2">
-        ${S.setupPlayers.map((p, i) => {
-          const botsBefore = S.setupPlayers.slice(0, i).filter(x => x.isBot).length;
-          const humansBefore = i - botsBefore;
-          const ph = p.isBot ? BOT_NAMES[botsBefore % BOT_NAMES.length] : "Spieler " + (humansBefore + 1);
-          return `
-          <div class="flex items-center gap-2">
-            <input type="text" value="${esc(p.name)}" maxlength="16"
-              placeholder="${ph}"
-              oninput="setupName(${i}, this.value)"
-              class="flex-1 min-w-0 bg-ink border border-stone-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-neon placeholder-stone-600" />
-            <button onclick="setupToggleBot(${i})"
-              class="tap shrink-0 text-xs font-bold px-3 py-2.5 rounded-lg border ${p.isBot ? "border-neon text-neon bg-neon/10" : "border-stone-700 text-stone-400"}">
-              ${p.isBot ? "🤖 Bot" : "🧍 Mensch"}
-            </button>
-            <button onclick="setupRemovePlayer(${i})" ${S.setupPlayers.length <= 3 ? "disabled" : ""}
-              class="tap shrink-0 w-9 h-9 grid place-items-center rounded-lg border border-stone-800 ${S.setupPlayers.length <= 3 ? "text-stone-700" : "text-warn"}">✕</button>
-          </div>`;
-        }).join("")}
-      </div>
-      <p class="text-[11px] text-stone-500 mt-3">Wähle Bots, wenn du keine Freunde hast.</p>
-    </div>
-
-    <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-6">
-      <h2 class="text-sm font-extrabold uppercase tracking-wider text-stone-300 mb-3">Punkteziel</h2>
-      <div class="flex gap-2">
-        ${[3, 5, 7, 10].map(n => `
-          <button onclick="setupTarget(${n}); render();"
-            class="tap flex-1 py-2.5 rounded-lg text-sm font-extrabold border ${S.targetScore === n ? "border-neon text-neon bg-neon/10 neon-glow" : "border-stone-700 text-stone-400"}">
-            ${n}
-          </button>`).join("")}
+  <div style="position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;background:rgba(4,4,6,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+    <div style="${css(t.sConfirmCard)}">
+      <p style="font-size:15px;line-height:1.5;color:#e7e5e4;margin:0 0 20px;">${esc(p.message)}</p>
+      <div style="display:flex;gap:10px;">
+        <button class="tap" onclick="cancelConfirm()" style="${css(t.sConfirmNo)}">Abbrechen</button>
+        <button class="tap" onclick="doConfirm()" style="${css(t.sConfirmYes)}">${esc(p.yes || "Ja")}</button>
       </div>
     </div>
-
-    <button onclick="startGame()"
-      class="tap w-full py-4 rounded-2xl font-display text-lg tracking-wide ${humans >= 1 ? "bg-neon text-white card-shadow" : "bg-stone-800 text-stone-500"}">
-      EMPÖRUNG STARTEN ▶
-    </button>
-    <p class="text-center text-[11px] text-stone-600 mt-4">${BLACK_CARDS.length} schwarze · ${WHITE_CARDS.length} weiße Karten im Deck</p>`;
+  </div>`;
 }
 
-function renderPassAnswer() {
-  const playerIdx = S.answerQueue[S.queuePos];
-  const player = S.players[playerIdx];
-  const czar = S.players[S.czarIdx];
-  return `
-    ${header("Gerät weitergeben")}
-    ${scoreboard()}
-    ${blackCardEl(S.currentBlack)}
-    ${skipBtn("Niemand hat was Passendes? Schwarze Karte skippen")}
-    <div class="flex-1 grid place-items-center py-10">
-      <div class="text-center slide-up">
-        <div class="text-5xl mb-4">🤫</div>
-        <p class="text-stone-400 text-sm mb-1">Empörungsbeauftragter dieser Runde: <span class="text-neon font-bold">${esc(czar.name)}</span></p>
-        <p class="text-xl font-extrabold mb-6">Gib das Gerät an<br><span class="text-neon text-3xl font-display">${esc(player.name)}</span></p>
-        <button onclick="showHand()" class="tap bg-neon text-white font-display px-8 py-4 rounded-2xl text-base card-shadow">
-          ICH BIN ${esc(player.name.toUpperCase())} – KARTEN ZEIGEN
-        </button>
-        <p class="text-[11px] text-stone-600 mt-4">Niemand sonst gucken! Sonst gibt's eine Anzeige.</p>
-      </div>
-    </div>`;
-}
-
-function renderAnswer() {
-  const playerIdx = S.answerQueue[S.queuePos];
-  const player = S.players[playerIdx];
-  return `
-    ${header("Wähle deine fieseste Karte")}
-    ${scoreboard()}
-    ${blackCardEl(S.currentBlack)}
-    ${skipBtn("Niemand hat was Passendes? Schwarze Karte skippen")}
-    <div class="flex items-center justify-between gap-2 mt-4 mb-2">
-      <p class="text-xs text-stone-500 uppercase tracking-wider">Deine Hand, ${esc(player.name)}:</p>
-      <button onclick="redrawHand()" ${player.redraws > 0 ? "" : "disabled"}
-        class="tap shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-lg border ${player.redraws > 0 ? "border-neon text-neon bg-neon/10" : "border-stone-800 text-stone-600"}">
-        🔄 Neue Hand (${player.redraws}×)
-      </button>
-    </div>
-    <div class="grid grid-cols-2 gap-2.5 mb-4">
-      ${player.hand.map((cardIdx, pos) => `
-        <button onclick="selectCard(${pos})"
-          class="tap text-left bg-card text-stone-900 rounded-xl p-3 text-[13px] font-semibold leading-snug min-h-[88px] ${S.selectedCard === pos ? "neon-glow" : "border border-stone-300/20"}">
-          ${esc(WHITE_CARDS[cardIdx])}
-        </button>`).join("")}
-    </div>
-    <button onclick="submitCard()" ${S.selectedCard === null ? "disabled" : ""}
-      class="tap w-full py-4 rounded-2xl font-display text-base ${S.selectedCard === null ? "bg-stone-800 text-stone-600" : "bg-neon text-white card-shadow"}">
-      ${S.selectedCard === null ? "KARTE ANTIPPEN…" : "VERDECKT EINREICHEN ✓"}
-    </button>`;
-}
-
-function renderPassJudge() {
-  const czar = S.players[S.czarIdx];
-  return `
-    ${header("Alle Antworten sind drin")}
-    ${scoreboard()}
-    ${blackCardEl(S.currentBlack)}
-    <div class="flex-1 grid place-items-center py-10">
-      <div class="text-center slide-up">
-        <div class="text-5xl mb-4">⚖️</div>
-        <p class="text-xl font-extrabold mb-6">Gib das Gerät an<br><span class="text-neon text-3xl font-display">${esc(czar.name)}</span></p>
-        <p class="text-stone-400 text-sm mb-6">Zeit für das Urteil des Empörungsbeauftragten.</p>
-        <button onclick="showJudging()" class="tap bg-neon text-white font-display px-8 py-4 rounded-2xl text-base card-shadow">
-          URTEIL FÄLLEN ⚖
-        </button>
-      </div>
-    </div>`;
-}
-
-function renderJudge() {
-  return `
-    ${header("Wähle den Gewinner")}
-    ${scoreboard()}
-    ${blackCardEl(S.currentBlack)}
-    ${skipBtn("Alles Müll? Schwarze Karte skippen – Antworten gehen zurück")}
-    <p class="text-xs text-stone-500 mt-4 mb-2 uppercase tracking-wider">Anonyme Einsendungen – wähle die beste:</p>
-    <div class="space-y-2.5 mb-4">
-      ${S.submissions.map((s, pos) => `
-        <button onclick="selectWinner(${pos})"
-          class="tap w-full text-left bg-card text-stone-900 rounded-xl p-4 text-sm font-semibold leading-snug ${S.judgeSelected === pos ? "neon-glow" : "border border-stone-300/20"}">
-          <span class="text-[10px] uppercase tracking-widest text-stone-500 block mb-1">Einsendung #${pos + 1}</span>
-          ${esc(WHITE_CARDS[s.cardIdx])}
-        </button>`).join("")}
-    </div>
-    <button onclick="confirmWinner()" ${S.judgeSelected === null ? "disabled" : ""}
-      class="tap w-full py-4 rounded-2xl font-display text-base ${S.judgeSelected === null ? "bg-stone-800 text-stone-600" : "bg-warn text-white card-shadow"}">
-      ${S.judgeSelected === null ? "EINSENDUNG ANTIPPEN…" : "GEWINNER KÜREN 🏆"}
-    </button>`;
-}
-
-function renderResult() {
-  const r = S.lastRound;
-  return `
-    ${header("Rundenergebnis")}
-    ${scoreboard()}
-    <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow mb-4 slide-up">
-      <p class="text-sm font-bold leading-snug text-stone-400 mb-3">${blackText(r.blackIdx)}</p>
-      <div class="bg-card text-stone-900 rounded-xl p-4 neon-glow">
-        <span class="text-[10px] uppercase tracking-widest text-neon font-extrabold block mb-1">🏆 Siegerkarte – ${esc(r.winnerName)}</span>
-        <p class="text-base font-extrabold leading-snug">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
-      </div>
-      ${r.czarIsBot ? `<p class="text-[11px] text-stone-500 mt-3">🤖 ${esc(r.czarName)} hat als Bot-Boss völlig willkürlich entschieden. Wie im echten Internet.</p>` : ""}
-    </div>
-    <p class="text-xs text-stone-500 mb-2 uppercase tracking-wider">Alle Einsendungen aufgedeckt:</p>
-    <div class="space-y-2 mb-5 max-h-56 overflow-y-auto scroll-thin">
-      ${r.reveals.map(rv => `
-        <div class="flex items-center gap-3 bg-panel border ${rv.won ? "border-neon" : "border-stone-800"} rounded-xl px-3.5 py-2.5 text-[13px]">
-          <span class="shrink-0 font-bold ${rv.won ? "text-neon" : "text-stone-500"}">${rv.won ? "🏆" : "💀"} ${esc(rv.name)}</span>
-          <span class="text-stone-300 leading-snug">${esc(WHITE_CARDS[rv.cardIdx])}</span>
-        </div>`).join("")}
-    </div>
-    <button onclick="nextRound()" class="tap w-full py-4 rounded-2xl font-display text-base bg-neon text-white card-shadow">
-      NÄCHSTE RUNDE ▶
-    </button>`;
-}
-
-function renderGameOver() {
-  const r = S.lastRound;
-  const champ = S.players.slice().sort((a, b) => b.score - a.score)[0];
-  const ranking = S.players.slice().sort((a, b) => b.score - a.score);
-  return `
-    ${header("Spielende")}
-    <div class="flex-1 flex flex-col justify-center py-8">
-      <div class="text-center mb-6 slide-up">
-        <div class="text-6xl mb-3">🏆</div>
-        <p class="text-stone-400 text-sm mb-1">Offiziell am meisten getriggert hat:</p>
-        <p class="font-display text-4xl text-neon mb-2">${esc(champ.name)}</p>
-        <p class="text-xs text-stone-500">${champ.score} Punkte – eine Karriere als Empörungsbeauftragter winkt.</p>
-      </div>
-      <div class="bg-black border border-stone-800 rounded-2xl p-5 card-shadow mb-4">
-        <p class="text-[10px] uppercase tracking-widest text-stone-500 mb-2">Finale Siegerkarte</p>
-        <p class="text-sm text-stone-400 leading-snug mb-3">${blackText(r.blackIdx)}</p>
-        <div class="bg-card text-stone-900 rounded-xl p-4">
-          <p class="text-base font-extrabold leading-snug">${esc(WHITE_CARDS[r.winningCardIdx])}</p>
-        </div>
-      </div>
-      <div class="bg-panel border border-stone-800 rounded-2xl p-4 mb-6">
-        <p class="text-xs uppercase tracking-wider text-stone-500 mb-3">Endstand</p>
-        ${ranking.map((p, i) => `
-          <div class="flex items-center justify-between py-1.5 text-sm ${i === 0 ? "text-neon font-extrabold" : "text-stone-300"}">
-            <span>${i + 1}. ${esc(p.name)}${p.isBot ? " 🤖" : ""}</span>
-            <span class="font-bold">${p.score}</span>
-          </div>`).join("")}
-      </div>
-      <button onclick="newGame()" class="tap w-full py-4 rounded-2xl font-display text-base bg-neon text-white card-shadow">
-        NEUES SPIEL ▶
-      </button>
-    </div>`;
-}
+/* ============================================================
+   Render-Dispatch
+   ============================================================ */
 
 function render() {
   const app = document.getElementById("app");
+  const t = theme();
   let html = "";
   switch (S.phase) {
-    case "setup":       html = renderSetup(); break;
-    case "pass_answer": html = renderPassAnswer(); break;
-    case "answer":      html = renderAnswer(); break;
-    case "pass_judge":  html = renderPassJudge(); break;
-    case "judge":       html = renderJudge(); break;
-    case "result":      html = renderResult(); break;
-    case "gameover":    html = renderGameOver(); break;
+    case "setup":       html = renderSetup(t); break;
+    case "pass_answer": html = renderPassAnswer(t); break;
+    case "answer":      html = renderAnswer(t); break;
+    case "pass_judge":  html = renderPassJudge(t); break;
+    case "judge":       html = renderJudge(t); break;
+    case "result":      html = renderResult(t); break;
+    case "gameover":    html = renderGameOver(t); break;
     default:
       S = defaultState();
-      html = renderSetup();
+      html = renderSetup(t);
   }
-  app.innerHTML = html + (S.helpOpen ? helpOverlay() : "");
-  window.scrollTo(0, 0);
+  if (S.helpOpen) html += helpOverlay(t);
+  if (S.pending) html += confirmOverlay(t);
+  app.innerHTML = html;
+  if (S.phase !== _lastPhase) {
+    _lastPhase = S.phase;
+    window.scrollTo(0, 0);
+  }
 }
 
 /* ============================================================
@@ -986,6 +1164,8 @@ if (S.phase === "judge") S.phase = "pass_judge";
 S.selectedCard = null;
 S.judgeSelected = null;
 S.helpOpen = false;
+S.pending = null;
+if (!Array.isArray(S.shards)) S.shards = [];
 render();
 </script>
 </body>
